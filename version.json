@@ -1,6 +1,13 @@
 {
-  "version": "1.3",
+  "version": "1.4",
   "history": [
+    {
+      "version": "1.4",
+      "date": "2026-03-09",
+      "changes": [
+        "Use pre-built ghcr.io image for Portainer compatibility"
+      ]
+    },
     {
       "version": "1.3",
       "date": "2026-03-09",
