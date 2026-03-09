@@ -1,8 +1,6 @@
 services:
   autoconvert:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/nielheesakkers/autoconvert:latest
     container_name: autoconvert
     restart: unless-stopped
     ports:
@@ -11,7 +9,7 @@ services:
       - ./config:/app/config        # Config (config.json + preset)
       - ./logs:/app/logs             # Logs + reports
       - ./backups:/backup            # Backups
-      - /path/to/movies:/media/movies    # Media: films
+      - /path/to/movies:/media/movies    # Media: movies
       - /path/to/series:/media/series    # Media: series
     environment:
       - DOCKER=true
