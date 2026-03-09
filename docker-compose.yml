@@ -1,0 +1,15 @@
+services:
+  autoconvert:
+    build: .
+    container_name: autoconvert
+    restart: unless-stopped
+    ports:
+      - "3742:3742"
+    volumes:
+      - ./config:/app/config        # Config (config.json)
+      - ./logs:/app/logs             # Logs
+      - /path/to/movies:/media/movies    # Media: films
+      - /path/to/series:/media/series    # Media: series
+    environment:
+      - DOCKER=true
+      - TZ=Europe/Amsterdam
