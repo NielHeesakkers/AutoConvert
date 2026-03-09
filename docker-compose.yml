@@ -1,6 +1,8 @@
 services:
   autoconvert:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: autoconvert
     restart: unless-stopped
     ports:

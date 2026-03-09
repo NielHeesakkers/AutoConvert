@@ -1,13 +1,13 @@
 FROM node:20-bookworm-slim
 
-# Install HandBrakeCLI, msmtp, python3 and Dutch locale
+# Install HandBrakeCLI, msmtp, python3 and locale
 RUN apt-get update && apt-get install -y --no-install-recommends \
     handbrake-cli \
     msmtp \
     python3 \
     locales \
     ca-certificates \
-  && sed -i '/nl_NL.UTF-8/s/^# //' /etc/locale.gen \
+  && sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen \
   && locale-gen \
   && rm -rf /var/lib/apt/lists/*
 
@@ -18,7 +18,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --production
 
 # Copy application
-COPY server.js ./
+COPY server.js version.json ./
 COPY public/ ./public/
 COPY scripts/ ./scripts/
 RUN chmod +x scripts/daily_mkv_convert.sh
