@@ -1,0 +1,29 @@
+{
+  "version": "1.1",
+  "history": [
+    {
+      "version": "1.1",
+      "date": "2026-03-09",
+      "changes": [
+        "Full English localization of UI, backend, scripts, and email reports",
+        "Show files ready for conversion on the Conversion page when idle",
+        "Configurable scan interval for automatic directory rescanning",
+        "Descriptive text on Directories tab explaining scanned paths"
+      ]
+    },
+    {
+      "version": "1.0",
+      "date": "2026-03-09",
+      "changes": [
+        "Web interface with sidebar navigation",
+        "MKV to MP4 conversion with HandBrakeCLI",
+        "Email reports with TMDB posters",
+        "Docker and Docker Compose support",
+        "HandBrake preset upload and management",
+        "Scheduled daily conversion",
+        "Configurable SMTP mail server",
+        "Email recipient management with test function"
+      ]
+    }
+  ]
+}

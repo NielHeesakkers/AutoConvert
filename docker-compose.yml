@@ -6,8 +6,9 @@ services:
     ports:
       - "3742:3742"
     volumes:
-      - ./config:/app/config        # Config (config.json)
-      - ./logs:/app/logs             # Logs
+      - ./config:/app/config        # Config (config.json + preset)
+      - ./logs:/app/logs             # Logs + reports
+      - ./backups:/backup            # Backups
       - /path/to/movies:/media/movies    # Media: films
       - /path/to/series:/media/series    # Media: series
     environment:

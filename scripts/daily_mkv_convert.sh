@@ -3,6 +3,7 @@
 # Scans media directories for MKV files
 # Converts to MP4 using HandBrake with the "Niel" preset
 # Sends HTML email report with TMDB posters via msmtp
+# Writes progress JSON to /tmp/mkv_convert_progress.json for web UI
 
 # Paths - configurable via environment variables
 APP_DIR="${APP_DIR:-/app}"
@@ -10,9 +11,17 @@ CONFIG_FILE="${CONFIG_FILE:-$APP_DIR/config/config.json}"
 PRESET_FILE="${PRESET_FILE:-$APP_DIR/scripts/Niel.json}"
 LOGFILE="${LOG_DIR:-$APP_DIR/logs}/daily_convert.log"
 REPORT_DIR="/tmp/mkv_convert_report"
+export REPORTS_DIR="${REPORTS_DIR:-${LOG_DIR:-$APP_DIR/logs}/reports}"
 MEDIA_MOVIES="${MEDIA_MOVIES:-/media/movies}"
 MEDIA_SERIES="${MEDIA_SERIES:-/media/series}"
 DIRS=("$MEDIA_MOVIES" "$MEDIA_SERIES")
+
+# Progress tracking paths
+PROGRESS_JSON="/tmp/mkv_convert_progress.json"
+HB_LOG="/tmp/mkv_convert_hb.log"
+
+# Create reports dir if needed
+mkdir -p "$REPORTS_DIR"
 
 # Clean report dir
 rm -rf "$REPORT_DIR"
@@ -22,19 +31,22 @@ mkdir -p "$REPORT_DIR"
 : > "$REPORT_DIR/dupes.txt"
 echo "0" > "$REPORT_DIR/skipped_empty.txt"
 
+# Clear old progress/hb files
+rm -f "$PROGRESS_JSON" "$HB_LOG"
+
 # Check if media is available
 MEDIA_FOUND=false
 for DIR in "${DIRS[@]}"; do
   [ -d "$DIR" ] && MEDIA_FOUND=true
 done
 if [ "$MEDIA_FOUND" = false ]; then
-  echo "$(date) - Geen media mappen beschikbaar, overgeslagen." >> "$LOGFILE"
+  echo "$(date) - No media directories available, skipped." >> "$LOGFILE"
   exit 0
 fi
 
 # Check if HandBrakeCLI is available
 if ! command -v HandBrakeCLI &>/dev/null; then
-  echo "$(date) - HandBrakeCLI niet gevonden." >> "$LOGFILE"
+  echo "$(date) - HandBrakeCLI not found." >> "$LOGFILE"
   exit 1
 fi
 
@@ -43,30 +55,37 @@ LOCKFILE="/tmp/daily_mkv_convert.lock"
 if [ -f "$LOCKFILE" ]; then
   PID=$(cat "$LOCKFILE")
   if kill -0 "$PID" 2>/dev/null; then
-    echo "$(date) - Conversie draait al (PID $PID), overgeslagen." >> "$LOGFILE"
+    echo "$(date) - Conversion already running (PID $PID), skipped." >> "$LOGFILE"
     exit 0
   fi
 fi
 echo $$ > "$LOCKFILE"
 trap 'rm -f "$LOCKFILE"' EXIT
 
+export START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%S")
+
 echo "" >> "$LOGFILE"
-echo "=== Dagelijkse conversie gestart: $(date) ===" >> "$LOGFILE"
+echo "=== Daily conversion started: $(date) ===" >> "$LOGFILE"
+
+# ─── PASS 1: Scan all directories, remove dupes, count empties, build master list ───
+MASTER_LIST="/tmp/daily_mkv_master_list.txt"
+: > "$MASTER_LIST"
 
 for DIR in "${DIRS[@]}"; do
   [ ! -d "$DIR" ] && continue
   DIRNAME=$(basename "$DIR")
 
-  # Step 1: Remove MKVs where MP4 already exists
+  # Find all non-empty and empty MKVs
   find "$DIR" -name '*.mkv' ! -empty -print | sort > /tmp/mkv_all_list.txt
   find "$DIR" -name '*.mkv' -empty -print > /tmp/mkv_empty_list.txt
 
+  # Remove MKVs where MP4 already exists (dupes)
   while IFS= read -r mkv <&3; do
     mp4="${mkv%.mkv}.mp4"
     if [ -f "$mp4" ]; then
       rm "$mkv"
       echo "$DIRNAME|$(basename "$mkv")" >> "$REPORT_DIR/dupes.txt"
-      echo "  Duplicaat verwijderd: $(basename "$mkv")" >> "$LOGFILE"
+      echo "  Duplicate removed: $(basename "$mkv")" >> "$LOGFILE"
     fi
   done 3< /tmp/mkv_all_list.txt
 
@@ -75,56 +94,147 @@ for DIR in "${DIRS[@]}"; do
   CURRENT=$(cat "$REPORT_DIR/skipped_empty.txt")
   echo "$((CURRENT + EMPTY_COUNT))" > "$REPORT_DIR/skipped_empty.txt"
 
-  # Step 2: Build list of non-empty MKVs to convert
-  FILELIST="/tmp/daily_mkv_filelist.txt"
-  find "$DIR" -name '*.mkv' ! -empty -print | sort > "$FILELIST"
-  COUNT=$(wc -l < "$FILELIST" | tr -d ' ')
+  # Build remaining non-empty MKVs into master list (with section tag)
+  find "$DIR" -name '*.mkv' ! -empty -print | sort | while IFS= read -r mkv; do
+    echo "${DIRNAME}|${mkv}"
+  done >> "$MASTER_LIST"
+done
 
-  if [ "$COUNT" -eq 0 ]; then
-    echo "  Geen MKV's te converteren in $DIR" >> "$LOGFILE"
-    continue
-  fi
+TOTAL_COUNT=$(wc -l < "$MASTER_LIST" | tr -d ' ')
+echo "  Total $TOTAL_COUNT MKV files found across all directories" >> "$LOGFILE"
 
-  echo "  $COUNT MKV's gevonden in $DIR" >> "$LOGFILE"
+# ─── Build initial progress JSON with complete file list ───
+if [ "$TOTAL_COUNT" -gt 0 ]; then
+  python3 -c "
+import json, subprocess, os
 
-  # Step 3: Convert
-  while IFS= read -r mkv <&3; do
+master_file = '$MASTER_LIST'
+files = []
+with open(master_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        section, path = line.split('|', 1)
+        name = os.path.basename(path)
+        result = subprocess.run(['du', '-h', path], capture_output=True, text=True)
+        size = result.stdout.split()[0] if result.stdout else '?'
+        files.append({'section': section, 'name': name, 'size': size, 'path': path})
+
+progress = {
+    'status': 'running',
+    'started': '$START_TIME',
+    'total': len(files),
+    'current': 0,
+    'current_file': '',
+    'files': [{'section': f['section'], 'name': f['name'], 'size': f['size']} for f in files],
+    'completed': []
+}
+
+with open('$PROGRESS_JSON', 'w') as out:
+    json.dump(progress, out, indent=2)
+
+# Also write the path list for bash to iterate
+with open('${MASTER_LIST}.paths', 'w') as out:
+    for f in files:
+        out.write(f['path'] + '\n')
+
+with open('${MASTER_LIST}.sections', 'w') as out:
+    for f in files:
+        out.write(f['section'] + '\n')
+"
+fi
+
+# ─── PASS 2: Convert all files from master list ───
+if [ "$TOTAL_COUNT" -eq 0 ]; then
+  echo "  No MKV files to convert." >> "$LOGFILE"
+else
+  INDEX=0
+  while IFS='|' read -r DIRNAME mkv <&3; do
     dir=$(dirname "$mkv")
     base=$(basename "$mkv" .mkv)
     mp4="${dir}/${base}.mp4"
     filesize=$(du -h "$mkv" | awk '{print $1}')
 
-    echo "  Bezig met: $(basename "$mkv")" >> "$LOGFILE"
+    echo "  Converting: $(basename "$mkv")" >> "$LOGFILE"
 
-    START_TIME=$(date +%s)
+    # Update progress JSON: mark current file
+    python3 -c "
+import json
+with open('$PROGRESS_JSON') as f:
+    p = json.load(f)
+p['current'] = $INDEX
+p['current_file'] = '${base}'
+with open('$PROGRESS_JSON', 'w') as f:
+    json.dump(p, f, indent=2)
+"
+
+    # Clear HandBrake log for this file
+    : > "$HB_LOG"
+
+    CONV_START=$(date +%s)
     HandBrakeCLI \
       --preset-import-file "$PRESET_FILE" \
       --preset "Niel" \
       -i "$mkv" \
       -o "$mp4" \
       </dev/null \
-      2>/dev/null
+      2>"$HB_LOG"
     RESULT=$?
-    END_TIME=$(date +%s)
-    DURATION=$(( (END_TIME - START_TIME) / 60 ))
+    CONV_END=$(date +%s)
+    DURATION=$(( (CONV_END - CONV_START) / 60 ))
 
     if [ $RESULT -eq 0 ] && [ -f "$mp4" ]; then
       newsize=$(du -h "$mp4" | awk '{print $1}')
       rm "$mkv"
       echo "${DIRNAME}|${base}|${filesize}|${newsize}|${DURATION}" >> "$REPORT_DIR/converted.txt"
       echo "    OK" >> "$LOGFILE"
+      CONV_STATUS="ok"
+      CONV_NEWSIZE="$newsize"
     else
       echo "${DIRNAME}|$(basename "$mkv")|${filesize}" >> "$REPORT_DIR/failed.txt"
-      echo "    FOUT" >> "$LOGFILE"
+      echo "    FAILED" >> "$LOGFILE"
+      CONV_STATUS="failed"
+      CONV_NEWSIZE=""
     fi
-  done 3< "$FILELIST"
-done
+
+    # Update progress JSON: mark file completed
+    python3 -c "
+import json
+with open('$PROGRESS_JSON') as f:
+    p = json.load(f)
+entry = {'index': $INDEX, 'status': '$CONV_STATUS', 'duration': $DURATION}
+if '$CONV_NEWSIZE':
+    entry['new_size'] = '$CONV_NEWSIZE'
+p['completed'].append(entry)
+with open('$PROGRESS_JSON', 'w') as f:
+    json.dump(p, f, indent=2)
+"
+
+    INDEX=$((INDEX + 1))
+  done 3< "$MASTER_LIST"
+fi
 
 SUCCESS=$(wc -l < "$REPORT_DIR/converted.txt" | tr -d ' ')
 FAILED=$(wc -l < "$REPORT_DIR/failed.txt" | tr -d ' ')
 DUPES=$(wc -l < "$REPORT_DIR/dupes.txt" | tr -d ' ')
 
-echo "=== Klaar: $(date) | Geconverteerd: $SUCCESS | Mislukt: $FAILED | Dupes verwijderd: $DUPES ===" >> "$LOGFILE"
+export END_TIME=$(date -u +"%Y-%m-%dT%H:%M:%S")
+
+# Update progress JSON: mark done
+if [ -f "$PROGRESS_JSON" ]; then
+  python3 -c "
+import json
+with open('$PROGRESS_JSON') as f:
+    p = json.load(f)
+p['status'] = 'done'
+p['finished'] = '$END_TIME'
+with open('$PROGRESS_JSON', 'w') as f:
+    json.dump(p, f, indent=2)
+"
+fi
+
+echo "=== Done: $(date) | Converted: $SUCCESS | Failed: $FAILED | Dupes removed: $DUPES ===" >> "$LOGFILE"
 
 # Generate and send HTML email report with TMDB info (only if something happened)
 if [ "$SUCCESS" -gt 0 ] || [ "$FAILED" -gt 0 ] || [ "$DUPES" -gt 0 ]; then
@@ -132,8 +242,8 @@ if [ "$SUCCESS" -gt 0 ] || [ "$FAILED" -gt 0 ] || [ "$DUPES" -gt 0 ]; then
   PYTHON_BIN=$(command -v python3)
   RECIPIENTS=$($PYTHON_BIN -c "import json; print(' '.join(r['email'] for r in json.load(open('$CONFIG_FILE'))['recipients'] if r.get('active', True)))")
   if [ -n "$RECIPIENTS" ]; then
-    $PYTHON_BIN "$APP_DIR/scripts/generate_report.py" "$REPORT_DIR" "$CONFIG_FILE" | $MSMTP_BIN $RECIPIENTS
+    $PYTHON_BIN "$APP_DIR/scripts/generate_report.py" "$REPORT_DIR" "$CONFIG_FILE" "$REPORTS_DIR" | $MSMTP_BIN $RECIPIENTS
   fi
 else
-  echo "  Niets te rapporteren, geen mail verstuurd." >> "$LOGFILE"
+  echo "  Nothing to report, no email sent." >> "$LOGFILE"
 fi

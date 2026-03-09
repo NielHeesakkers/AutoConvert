@@ -23,8 +23,9 @@ COPY public/ ./public/
 COPY scripts/ ./scripts/
 RUN chmod +x scripts/daily_mkv_convert.sh
 
-# Create volumes
-RUN mkdir -p /app/config /app/logs /media/movies /media/series
+# Create directories and copy default preset to config
+RUN mkdir -p /app/config /app/logs/reports /media/movies /media/series \
+  && cp scripts/Niel.json /app/config/Niel.json
 
 ENV DOCKER=true
 ENV NODE_ENV=production
