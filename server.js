@@ -91,7 +91,17 @@ function runConvertScript() {
 
 // --- Helpers ---
 
+const DEFAULT_CONFIG = {
+  recipients: [],
+  smtp: { host: '', port: 587, user: '', password: '', from: '', tls: true, starttls: true },
+  schedule: { hour: 3, minute: 0, scanInterval: 0 },
+};
+
 function readConfig() {
+  if (!fs.existsSync(CONFIG_PATH)) {
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n');
+  }
   return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 }
 
