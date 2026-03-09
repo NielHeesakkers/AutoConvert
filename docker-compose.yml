@@ -1,6 +1,7 @@
 services:
   autoconvert:
-    image: ghcr.io/nielheesakkers/autoconvert:latest
+    build:
+      context: https://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@github.com/NielHeesakkers/AutoConvert.git#main
     container_name: autoconvert
     restart: unless-stopped
     ports:
