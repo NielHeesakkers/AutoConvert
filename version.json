@@ -1,6 +1,13 @@
 {
-  "version": "1.7",
+  "version": "1.8",
   "history": [
+    {
+      "version": "1.8",
+      "date": "2026-03-10",
+      "changes": [
+        "Show scanning state during conversion startup"
+      ]
+    },
     {
       "version": "1.7",
       "date": "2026-03-10",
