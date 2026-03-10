@@ -25,8 +25,8 @@ const PROGRESS_FILE = '/tmp/mkv_convert_progress.json';
 const HB_LOG_FILE = '/tmp/mkv_convert_hb.log';
 const MSMTP_BIN = DOCKER ? '/usr/bin/msmtp' : '/opt/homebrew/bin/msmtp';
 const MSMTPRC_PATH = DOCKER ? '/root/.msmtprc' : path.join(process.env.HOME, '.msmtprc');
-const MEDIA_MOVIES = process.env.MEDIA_MOVIES || (DOCKER ? '/media/movies' : '/Volumes/Media/movies');
-const MEDIA_SERIES = process.env.MEDIA_SERIES || (DOCKER ? '/media/series' : '/Volumes/Media/series');
+const MEDIA_MOVIES = process.env.MEDIA_MOVIES || (DOCKER ? '/media/movies' : '/Volumes/Media/Movies');
+const MEDIA_SERIES = process.env.MEDIA_SERIES || (DOCKER ? '/media/series' : '/Volumes/Media/Series');
 const BACKUP_DIR = DOCKER ? '/backup' : path.join(__dirname, 'backups');
 const VERSION_FILE = path.join(APP_DIR, 'version.json');
 
@@ -78,7 +78,7 @@ function runConvertScript() {
     REPORTS_DIR,
     MEDIA_MOVIES,
     MEDIA_SERIES,
-    PATH: '/usr/local/bin:/usr/bin:/bin',
+    PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
   };
   const child = spawn('/bin/bash', [SCRIPT_PATH], {
     detached: true,
@@ -478,49 +478,76 @@ app.delete('/api/logs', (req, res) => {
   }
 });
 
-// Directories
-app.get('/api/directories', (req, res) => {
-  const basePaths = [MEDIA_MOVIES, MEDIA_SERIES];
+// Directories (async with background cache for slow network volumes)
+const fsPromises = fs.promises;
 
-  const directories = basePaths.map(dirPath => {
-    const exists = fs.existsSync(dirPath);
-    let files = [];
-    if (exists) {
-      try {
-        const findMkv = (dir, rel) => {
-          const entries = fs.readdirSync(dir, { withFileTypes: true });
-          for (const entry of entries) {
-            const full = path.join(dir, entry.name);
-            const relPath = rel ? `${rel}/${entry.name}` : entry.name;
-            if (entry.isDirectory()) {
-              findMkv(full, relPath);
-            } else if (entry.isFile() && entry.name.endsWith('.mkv')) {
-              try {
-                const stat = fs.statSync(full);
-                files.push({
-                  name: entry.name,
-                  path: relPath,
-                  size: stat.size,
-                  modified: stat.mtime,
-                });
-              } catch {}
-            }
-          }
-        };
-        findMkv(dirPath, '');
-      } catch {}
+let dirCache = null;
+let dirScanRunning = false;
+
+async function findMkvAsync(dir, rel) {
+  const files = [];
+  try {
+    const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        const sub = await findMkvAsync(full, relPath);
+        files.push(...sub);
+      } else if (entry.isFile() && entry.name.endsWith('.mkv')) {
+        try {
+          const stat = await fsPromises.stat(full);
+          files.push({ name: entry.name, path: relPath, size: stat.size, modified: stat.mtime });
+        } catch {}
+      }
     }
-    files.sort((a, b) => a.path.localeCompare(b.path));
-    return {
-      path: dirPath,
-      name: path.basename(dirPath),
-      exists,
-      fileCount: files.length,
-      files,
-    };
-  });
+  } catch {}
+  return files;
+}
 
-  res.json({ directories });
+async function scanDirectories() {
+  if (dirScanRunning) return;
+  dirScanRunning = true;
+  const basePaths = [MEDIA_MOVIES, MEDIA_SERIES];
+  try {
+    const directories = await Promise.all(basePaths.map(async (dirPath) => {
+      let exists = false;
+      try { await fsPromises.access(dirPath); exists = true; } catch {}
+      let files = [];
+      if (exists) {
+        files = await findMkvAsync(dirPath, '');
+        files.sort((a, b) => a.path.localeCompare(b.path));
+      }
+      return { path: dirPath, name: path.basename(dirPath), exists, fileCount: files.length, files };
+    }));
+    dirCache = { directories, scannedAt: Date.now() };
+    console.log(`[scan] Directory scan complete: ${directories.map(d => `${d.name}=${d.fileCount}`).join(', ')}`);
+  } catch (err) {
+    console.error('[scan] Error:', err.message);
+  }
+  dirScanRunning = false;
+}
+
+// Start initial scan on startup
+scanDirectories();
+
+app.get('/api/directories', (req, res) => {
+  if (dirCache) {
+    res.json(dirCache);
+  } else {
+    // Return empty while scanning
+    res.json({
+      directories: [
+        { path: MEDIA_MOVIES, name: path.basename(MEDIA_MOVIES), exists: true, fileCount: 0, files: [], scanning: true },
+        { path: MEDIA_SERIES, name: path.basename(MEDIA_SERIES), exists: true, fileCount: 0, files: [], scanning: true },
+      ],
+      scanning: true,
+    });
+  }
+  // Trigger background rescan if cache is older than 5 minutes
+  if (!dirCache || Date.now() - dirCache.scannedAt > 300000) {
+    scanDirectories();
+  }
 });
 
 // Preset info
@@ -721,6 +748,113 @@ app.post('/api/import', (req, res) => {
       fs.writeFileSync(PRESET_FILE, JSON.stringify(data.preset, null, 2));
     }
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- TMDB Lookup ---
+const TMDB_API_KEY = '08a78191b56b49e8c66ed4ff0beff5e8';
+const TMDB_IMG_BASE = 'https://image.tmdb.org/t/p/w154';
+const tmdbCache = new Map();
+
+function parseTitleYear(filename) {
+  let m;
+  m = filename.match(/^(.+?)\s*\((\d{4})\)\s*-\s*S(\d+)E(\d+)/);
+  if (m) return { title: m[1].trim(), year: m[2], type: 'tv', season: +m[3], episode: +m[4] };
+  m = filename.match(/^(.+?)\s*-\s*S(\d+)E(\d+)/);
+  if (m) return { title: m[1].trim(), year: null, type: 'tv', season: +m[2], episode: +m[3] };
+  m = filename.match(/^(.+?)[\.\s]+[Ss](\d+)[Ee](\d+)/);
+  if (m) return { title: m[1].replace(/\./g, ' ').trim(), year: null, type: 'tv', season: +m[2], episode: +m[3] };
+  m = filename.match(/^(.+?)\s*\((\d{4})\)/);
+  if (m) return { title: m[1].trim(), year: m[2], type: 'movie', season: null, episode: null };
+  return { title: filename, year: null, type: 'movie', season: null, episode: null };
+}
+
+const https = require('https');
+
+async function tmdbRequest(apiPath, params = {}) {
+  params.api_key = TMDB_API_KEY;
+  const qs = new URLSearchParams(params).toString();
+  const url = `https://api.themoviedb.org/3${apiPath}?${qs}`;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { req.destroy(); reject(new Error('TMDB timeout')); }, 8000);
+    const req = https.get(url, { headers: { 'User-Agent': 'MKV-Converter/1.0' } }, res => {
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => {
+        clearTimeout(timer);
+        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', e => { clearTimeout(timer); reject(e); });
+  });
+}
+
+async function fetchTmdb(parsed) {
+  const { title, year, type, season, episode } = parsed;
+  try {
+    if (type === 'movie') {
+      const params = { query: title };
+      if (year) params.year = year;
+      const data = await tmdbRequest('/search/movie', params);
+      if (data.results && data.results.length) {
+        const r = data.results[0];
+        return {
+          title: r.title || title,
+          year: (r.release_date || '').slice(0, 4),
+          rating: r.vote_average || 0,
+          overview: (r.overview || '').slice(0, 150),
+          poster: r.poster_path ? `${TMDB_IMG_BASE}${r.poster_path}` : null,
+        };
+      }
+    } else {
+      const data = await tmdbRequest('/search/tv', { query: title });
+      if (data.results && data.results.length) {
+        const series = data.results[0];
+        const seriesPoster = series.poster_path ? `${TMDB_IMG_BASE}${series.poster_path}` : null;
+        if (season != null && episode != null) {
+          try {
+            const ep = await tmdbRequest(`/tv/${series.id}/season/${season}/episode/${episode}`);
+            const still = ep.still_path ? `${TMDB_IMG_BASE}${ep.still_path}` : null;
+            return {
+              title: series.name || title,
+              year: (series.first_air_date || '').slice(0, 4),
+              rating: ep.vote_average || 0,
+              overview: (ep.overview || '').slice(0, 150),
+              poster: still || seriesPoster,
+              ep_label: `S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}`,
+              ep_name: ep.name || '',
+            };
+          } catch {}
+        }
+        return {
+          title: series.name || title,
+          year: (series.first_air_date || '').slice(0, 4),
+          rating: series.vote_average || 0,
+          overview: (series.overview || '').slice(0, 150),
+          poster: seriesPoster,
+          ep_label: (season != null && episode != null) ? `S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}` : '',
+        };
+      }
+    }
+  } catch {}
+  return { title, year: year || '', rating: 0, overview: '', poster: null };
+}
+
+app.post('/api/tmdb/lookup', async (req, res) => {
+  const { files } = req.body;
+  if (!Array.isArray(files)) return res.status(400).json({ error: 'files must be an array' });
+  try {
+    const results = await Promise.all(files.map(async (f) => {
+      const parsed = parseTitleYear(f.name.replace(/\.mkv$/i, ''));
+      const cacheKey = `${parsed.title.toLowerCase()}_${parsed.season || ''}_${parsed.episode || ''}`;
+      if (tmdbCache.has(cacheKey)) return { ...f, tmdb: tmdbCache.get(cacheKey) };
+      const tmdb = await fetchTmdb(parsed);
+      tmdbCache.set(cacheKey, tmdb);
+      return { ...f, tmdb };
+    }));
+    res.json({ results });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
