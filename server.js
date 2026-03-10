@@ -565,19 +565,12 @@ app.get('/api/directories', (req, res) => {
 
 // Debug: check mount and file sizes
 app.get('/api/debug/mount', (req, res) => {
-  try {
-    const mount = execSync('mount | grep media 2>&1 || echo "no media mounts"', { timeout: 5000 }).toString().trim();
-    const df = execSync('df -h /media/movies /media/series 2>&1', { timeout: 5000 }).toString().trim();
-    const findMkv = execSync('find /media/movies /media/series -name "*.mkv" -maxdepth 3 2>/dev/null | head -3', { timeout: 10000 }).toString().trim();
-    let mkvCheck = '';
-    if (findMkv) {
-      const first = findMkv.split('\n')[0];
-      mkvCheck = execSync(`ls -la "${first}" 2>&1 && du -h "${first}" 2>&1 && file "${first}" 2>&1`, { timeout: 10000 }).toString().trim();
-    }
-    res.json({ mount, df, findMkv, mkvCheck });
-  } catch (err) {
-    res.json({ error: err.message });
-  }
+  const results = {};
+  try { results.mount = execSync('mount | grep media 2>&1 || echo "no media mounts"', { timeout: 5000 }).toString().trim(); } catch (e) { results.mount = e.message; }
+  try { results.df = execSync('df -h /media/movies /media/series 2>&1', { timeout: 5000 }).toString().trim(); } catch (e) { results.df = e.message; }
+  try { results.findMkv = execSync('find /media/movies /media/series -name "*.mkv" -maxdepth 3 2>/dev/null | head -3', { timeout: 10000 }).toString().trim(); } catch (e) { results.findMkv = e.message; }
+  try { results.mkvSizes = execSync("find /media/movies /media/series -name '*.mkv' -maxdepth 3 -exec ls -lh {} \\; 2>/dev/null | head -5", { timeout: 10000 }).toString().trim(); } catch (e) { results.mkvSizes = e.message; }
+  res.json(results);
 });
 
 // Preset info
