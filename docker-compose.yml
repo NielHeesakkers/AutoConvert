@@ -4,29 +4,18 @@ services:
       context: https://[token]@github.com/NielHeesakkers/AutoConvert.git#main
     container_name: autoconvert
     restart: unless-stopped
+    privileged: true
     ports:
       - "3742:3742"
     volumes:
       - /Users/server/Docker/Config:/app/config
       - /Users/server/Docker/Logs:/app/logs
       - /Users/server/Docker/Backups:/backup
-      - nas_movies:/media/movies
-      - nas_series:/media/series
     environment:
       - DOCKER=true
       - TZ=Europe/Amsterdam
-
-# Direct CIFS mount to Synology NAS
-volumes:
-  nas_movies:
-    driver: local
-    driver_opts:
-      type: cifs
-      device: "//192.168.1.10/Media/Movies"
-      o: "username=[user],password=[pass],uid=1000,gid=1000,vers=3.0"
-  nas_series:
-    driver: local
-    driver_opts:
-      type: cifs
-      device: "//192.168.1.10/Media/Series"
-      o: "username=[user],password=[pass],uid=1000,gid=1000,vers=3.0"
+      - NAS_IP=192.168.1.10
+      - NAS_USER=[user]
+      - NAS_PASS=[pass]
+      - NAS_MOVIES_SHARE=/Media/Movies
+      - NAS_SERIES_SHARE=/Media/Series
