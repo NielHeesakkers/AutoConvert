@@ -1,6 +1,13 @@
 {
-  "version": "1.12",
+  "version": "1.13",
   "history": [
+    {
+      "version": "1.13",
+      "date": "2026-03-10 11:06",
+      "changes": [
+        "Fix race condition: render cards immediately, fetch TMDB in background"
+      ]
+    },
     {
       "version": "1.12",
       "date": "2026-03-10 10:55",
