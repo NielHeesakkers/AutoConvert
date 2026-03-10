@@ -473,7 +473,8 @@ function renderTmdbCard(f, options = {}) {
     const cmpCls = options.failed ? ' failed' : '';
     meta = `<div class="tmdb-size-compare${cmpCls}">${options.sizeCompare}</div>`;
   } else {
-    meta = `<div class="tmdb-meta">${typeof f.size === 'number' ? fmtBytes(f.size) : escHtml(f.size || '')}</div>`;
+    const sizeStr = typeof f.size === 'number' ? (f.size > 0 ? fmtBytes(f.size) : '') : (f.size || '');
+    meta = sizeStr ? `<div class="tmdb-meta">${escHtml(sizeStr)}</div>` : '';
   }
   let progressHtml = '';
   if (options.progress != null) {
