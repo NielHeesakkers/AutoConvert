@@ -1,6 +1,13 @@
 {
-  "version": "1.19",
+  "version": "1.20",
   "history": [
+    {
+      "version": "1.20",
+      "date": "2026-03-10 16:00",
+      "changes": [
+        "Update docker-compose with Synology CIFS mounts and server paths"
+      ]
+    },
     {
       "version": "1.19",
       "date": "2026-03-10 15:59",
