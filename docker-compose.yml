@@ -1,7 +1,6 @@
 services:
   autoconvert:
-    build:
-      context: https://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@github.com/NielHeesakkers/AutoConvert.git#main
+    image: ghcr.io/nielheesakkers/autoconvert:latest
     container_name: autoconvert
     restart: unless-stopped
     ports:
@@ -10,8 +9,23 @@ services:
       - ./config:/app/config        # Config (config.json + preset)
       - ./logs:/app/logs             # Logs + reports
       - ./backups:/backup            # Backups
-      - /path/to/movies:/media/movies    # Media: movies
-      - /path/to/series:/media/series    # Media: series
+      - nas_movies:/media/movies     # Synology NAS: movies
+      - nas_series:/media/series     # Synology NAS: series
     environment:
       - DOCKER=true
       - TZ=Europe/Amsterdam
+
+# Direct SMB/CIFS mount to Synology (bypasses macOS, real file content)
+volumes:
+  nas_movies:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "//NAS_IP/SHARE/path/to/movies"   # ← bijv. //192.168.1.100/video/movies
+      o: "username=USER,password=PASS,uid=1000,gid=1000,vers=3.0"
+  nas_series:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "//NAS_IP/SHARE/path/to/series"   # ← bijv. //192.168.1.100/video/series
+      o: "username=USER,password=PASS,uid=1000,gid=1000,vers=3.0"
