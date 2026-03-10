@@ -167,6 +167,13 @@ app.get('/api/status', (req, res) => {
 // Conversion progress
 app.get('/api/convert/progress', (req, res) => {
   if (!isRunning()) {
+    // Check if there's a recent "done" progress file (show results briefly)
+    try {
+      const progress = JSON.parse(fs.readFileSync(PROGRESS_FILE, 'utf8'));
+      if (progress.status === 'done' && progress.finished) {
+        return res.json(progress);
+      }
+    } catch {}
     return res.json({ status: 'idle' });
   }
   let progress = { status: 'running' };
@@ -196,6 +203,12 @@ app.get('/api/convert/progress', (req, res) => {
   } catch {}
 
   res.json(progress);
+});
+
+// Clear progress (after done summary shown)
+app.post('/api/convert/progress/clear', (req, res) => {
+  try { fs.unlinkSync(PROGRESS_FILE); } catch {}
+  res.json({ ok: true });
 });
 
 // Recipients

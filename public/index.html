@@ -519,11 +519,20 @@ async function loadStatus() {
       sidebar.textContent = 'Idle';
       document.getElementById('btnStart').disabled = false;
       document.getElementById('btnStop').style.display = 'none';
-      document.getElementById('convProgress').style.display = 'none';
-      document.getElementById('convQueue').style.display = '';
-      progressTmdbData = null;
-      progressTmdbLoading = false;
-      loadConvQueue();
+      // Check if there's a "done" summary to show before going back to queue
+      loadProgress().then(() => {
+        const progEl = document.getElementById('convProgress');
+        if (progEl.style.display === 'none') {
+          // No done summary — show idle queue
+          document.getElementById('convQueue').style.display = '';
+          progressTmdbData = null;
+          progressTmdbLoading = false;
+          loadConvQueue();
+        } else {
+          // Done summary is showing — hide queue
+          document.getElementById('convQueue').style.display = 'none';
+        }
+      });
     }
   } catch {}
 }
@@ -603,6 +612,67 @@ async function loadProgress() {
     const res = await fetch('/api/convert/progress');
     const p = await res.json();
     if (p.status === 'idle') { document.getElementById('convProgress').style.display = 'none'; progressTmdbData = null; progressTmdbLoading = false; return; }
+
+    // Show "done" summary after conversion finishes
+    if (p.status === 'done') {
+      document.getElementById('convProgress').style.display = '';
+      const files = p.files || [];
+      const completed = p.completed || [];
+      const ok = completed.filter(c => c.status === 'ok').length;
+      const failed = completed.filter(c => c.status !== 'ok').length;
+
+      document.getElementById('convBarTotal').style.width = '100%';
+      document.getElementById('convLabelTotal').textContent = `Done — ${ok} converted, ${failed} failed`;
+
+      // Fetch TMDB for done results
+      if (!progressTmdbData && !progressTmdbLoading && files.length > 0) {
+        progressTmdbLoading = true;
+        try {
+          const tmdbRes = await fetch('/api/tmdb/lookup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: files.map(f => ({ name: f.name, size: f.size, section: f.section })) }),
+          });
+          const tmdbData = await tmdbRes.json();
+          if (tmdbData.results) progressTmdbData = tmdbData.results;
+        } catch {}
+        progressTmdbLoading = false;
+      }
+
+      const completedMap = {};
+      completed.forEach(c => { completedMap[c.index] = c; });
+      let html = '';
+      files.forEach((f, i) => {
+        const tmdbFile = (progressTmdbData && progressTmdbData[i]) || f;
+        const fileData = { ...tmdbFile, size: f.size, section: f.section, name: f.name };
+        if (!fileData.tmdb && tmdbFile.tmdb) fileData.tmdb = tmdbFile.tmdb;
+        const c = completedMap[i];
+        if (c) {
+          const isOk = c.status === 'ok';
+          const statusIcon = isOk ? '<span class="tmdb-status-icon" style="color:#4ade80;">&#10003;</span>' : '<span class="tmdb-status-icon" style="color:#ef4444;">&#10007;</span>';
+          const sizeCompare = isOk ? `${statusIcon} ${escHtml(f.size || '')} → ${escHtml(c.new_size || '')}` : `${statusIcon} Failed`;
+          html += renderTmdbCard(fileData, { cls: isOk ? 'done' : 'failed', sizeCompare, failed: !isOk });
+        } else {
+          html += renderTmdbCard(fileData, { cls: 'pending' });
+        }
+      });
+      document.getElementById('convFileList').innerHTML = html;
+
+      // Clear done state after 30 seconds, go back to idle queue
+      if (!loadProgress._doneTimer) {
+        loadProgress._doneTimer = setTimeout(async () => {
+          loadProgress._doneTimer = null;
+          progressTmdbData = null; progressTmdbLoading = false;
+          try { await fetch('/api/convert/progress/clear', { method: 'POST' }); } catch {}
+          loadStatus();
+        }, 30000);
+      }
+      return;
+    }
+
+    // Clear done timer if we're running again
+    if (loadProgress._doneTimer) { clearTimeout(loadProgress._doneTimer); loadProgress._doneTimer = null; }
+
     document.getElementById('convProgress').style.display = '';
     const files = p.files || [];
     const completed = p.completed || [];
