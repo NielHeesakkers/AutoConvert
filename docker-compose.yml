@@ -7,26 +7,26 @@ services:
     ports:
       - "3742:3742"
     volumes:
-      - ./config:/app/config        # Config (config.json + preset)
-      - ./logs:/app/logs             # Logs + reports
-      - ./backups:/backup            # Backups
-      - nas_movies:/media/movies     # Synology NAS: movies
-      - nas_series:/media/series     # Synology NAS: series
+      - /Users/server/Docker/Config:/app/config
+      - /Users/server/Docker/Logs:/app/logs
+      - /Users/server/Docker/Backups:/backup
+      - nas_movies:/media/movies
+      - nas_series:/media/series
     environment:
       - DOCKER=true
       - TZ=Europe/Amsterdam
 
-# Direct SMB/CIFS mount to Synology (bypasses macOS, real file content)
+# Direct CIFS mount to Synology NAS
 volumes:
   nas_movies:
     driver: local
     driver_opts:
       type: cifs
-      device: "//NAS_IP/SHARE/path/to/movies"   # ← bijv. //192.168.1.100/video/movies
-      o: "username=USER,password=PASS,uid=1000,gid=1000,vers=3.0"
+      device: "//192.168.1.10/Media/Movies"
+      o: "username=[user],password=[pass],uid=1000,gid=1000,vers=3.0"
   nas_series:
     driver: local
     driver_opts:
       type: cifs
-      device: "//NAS_IP/SHARE/path/to/series"   # ← bijv. //192.168.1.100/video/series
-      o: "username=USER,password=PASS,uid=1000,gid=1000,vers=3.0"
+      device: "//192.168.1.10/Media/Series"
+      o: "username=[user],password=[pass],uid=1000,gid=1000,vers=3.0"
