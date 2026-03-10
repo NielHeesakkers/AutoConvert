@@ -1,6 +1,13 @@
 {
-  "version": "1.15",
+  "version": "1.16",
   "history": [
+    {
+      "version": "1.16",
+      "date": "2026-03-10 12:21",
+      "changes": [
+        "Use direct CIFS mount for Synology NAS volumes"
+      ]
+    },
     {
       "version": "1.15",
       "date": "2026-03-10 11:28",
