@@ -563,6 +563,19 @@ app.get('/api/directories', (req, res) => {
   }
 });
 
+// Debug: check mount and file sizes
+app.get('/api/debug/mount', (req, res) => {
+  try {
+    const mount = execSync('mount | grep media 2>&1 || echo "no media mounts"', { timeout: 5000 }).toString().trim();
+    const lsMovies = execSync('ls -la /media/movies/ 2>&1 | head -5', { timeout: 5000 }).toString().trim();
+    const lsSeries = execSync('ls -la /media/series/ 2>&1 | head -5', { timeout: 5000 }).toString().trim();
+    const df = execSync('df -h /media/movies /media/series 2>&1', { timeout: 5000 }).toString().trim();
+    res.json({ mount, lsMovies, lsSeries, df });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 // Preset info
 app.get('/api/preset', (req, res) => {
   try {
