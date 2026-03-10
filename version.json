@@ -1,6 +1,13 @@
 {
-  "version": "1.23",
+  "version": "1.24",
   "history": [
+    {
+      "version": "1.24",
+      "date": "2026-03-10 18:31",
+      "changes": [
+        "Add /api/debug/mount endpoint for CIFS diagnostics"
+      ]
+    },
     {
       "version": "1.23",
       "date": "2026-03-10 18:30",
