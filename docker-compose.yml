@@ -8,14 +8,14 @@ services:
     ports:
       - "3742:3742"
     volumes:
-      - /Users/server/Docker/Config:/app/config
-      - /Users/server/Docker/Logs:/app/logs
-      - /Users/server/Docker/Backups:/backup
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./backups:/backup
     environment:
       - DOCKER=true
       - TZ=Europe/Amsterdam
-      - NAS_IP=192.168.1.10
-      - NAS_USER=[user]
-      - NAS_PASS=[pass]
+      - NAS_IP=
+      - NAS_USER=
+      - NAS_PASS=
       - NAS_MOVIES_SHARE=/Media/Movies
       - NAS_SERIES_SHARE=/Media/Series
