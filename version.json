@@ -1,6 +1,13 @@
 {
-  "version": "1.9",
+  "version": "1.10",
   "history": [
+    {
+      "version": "1.10",
+      "date": "2026-03-10 10:34",
+      "changes": [
+        "Fix Docker build: lowercase repository owner in image tags"
+      ]
+    },
     {
       "version": "1.9",
       "date": "2026-03-10 10:33",
