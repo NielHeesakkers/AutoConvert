@@ -1,6 +1,13 @@
 {
-  "version": "1.22",
+  "version": "1.23",
   "history": [
+    {
+      "version": "1.23",
+      "date": "2026-03-10 18:30",
+      "changes": [
+        "Build multi-platform Docker image (amd64 + arm64)"
+      ]
+    },
     {
       "version": "1.22",
       "date": "2026-03-10 16:11",
