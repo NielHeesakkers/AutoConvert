@@ -1,6 +1,13 @@
 {
-  "version": "1.21",
+  "version": "1.22",
   "history": [
+    {
+      "version": "1.22",
+      "date": "2026-03-10 16:11",
+      "changes": [
+        "Anonymize docker-compose: remove server paths and credentials"
+      ]
+    },
     {
       "version": "1.21",
       "date": "2026-03-10 16:09",
