@@ -1,7 +1,7 @@
 services:
   autoconvert:
     build:
-      context: https://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@github.com/NielHeesakkers/AutoConvert.git#main
+      context: https://github.com/NielHeesakkers/AutoConvert.git#main
     image: ghcr.io/nielheesakkers/autoconvert:latest
     container_name: autoconvert
     restart: unless-stopped
