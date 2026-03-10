@@ -610,6 +610,14 @@ async function loadProgress() {
     const hbPct = p.hb_progress || 0;
     const hbEta = p.hb_eta || '';
 
+    // Show scanning state when script is starting up (no files yet)
+    if (files.length === 0) {
+      document.getElementById('convBarTotal').style.width = '0%';
+      document.getElementById('convLabelTotal').textContent = 'Scanning media directories...';
+      document.getElementById('convFileList').innerHTML = '<div style="color:#888;padding:12px;font-size:13px;">Looking for MKV files to convert...</div>';
+      return;
+    }
+
     // Overall bar
     const pctTotal = total > 0 ? Math.round((completed.length / total) * 100) : 0;
     document.getElementById('convBarTotal').style.width = pctTotal + '%';
