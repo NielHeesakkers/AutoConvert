@@ -1,6 +1,13 @@
 {
-  "version": "1.14",
+  "version": "1.15",
   "history": [
+    {
+      "version": "1.15",
+      "date": "2026-03-10 11:28",
+      "changes": [
+        "Fix encoder detection: parse from --help instead of --encoder-list"
+      ]
+    },
     {
       "version": "1.14",
       "date": "2026-03-10 11:18",
