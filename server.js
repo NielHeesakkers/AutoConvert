@@ -873,6 +873,41 @@ app.post('/api/tmdb/lookup', async (req, res) => {
   }
 });
 
+// --- HandBrake info ---
+app.get('/api/handbrake/encoders', (req, res) => {
+  try {
+    const output = execSync('HandBrakeCLI --encoder-list 2>&1', { timeout: 10000 }).toString();
+    const video = [];
+    const audio = [];
+    let section = '';
+    for (const line of output.split('\n')) {
+      if (line.includes('Video Encoders')) { section = 'video'; continue; }
+      if (line.includes('Audio Encoders')) { section = 'audio'; continue; }
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('---')) continue;
+      if (section === 'video' && trimmed) video.push(trimmed);
+      if (section === 'audio' && trimmed) audio.push(trimmed);
+    }
+    // Read preset to show what's configured
+    let presetEncoder = '', presetAudio = '';
+    try {
+      const preset = JSON.parse(fs.readFileSync(PRESET_FILE, 'utf8'));
+      presetEncoder = preset.PresetList?.[0]?.VideoEncoder || '';
+      presetAudio = preset.PresetList?.[0]?.AudioList?.[0]?.AudioEncoder || '';
+    } catch {}
+    res.json({
+      video,
+      audio,
+      presetEncoder,
+      presetAudio,
+      presetEncoderAvailable: video.some(v => v.includes(presetEncoder)),
+      presetAudioAvailable: audio.some(a => a.includes(presetAudio)),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Version ---
 app.get('/api/version', (req, res) => {
   try {
