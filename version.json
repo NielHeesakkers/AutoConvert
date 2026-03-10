@@ -1,6 +1,13 @@
 {
-  "version": "1.6",
+  "version": "1.7",
   "history": [
+    {
+      "version": "1.7",
+      "date": "2026-03-10",
+      "changes": [
+        "Add TMDB cards to conversion UI with progress tracking"
+      ]
+    },
     {
       "version": "1.6",
       "date": "2026-03-09",
