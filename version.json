@@ -1,6 +1,13 @@
 {
-  "version": "1.16",
+  "version": "1.17",
   "history": [
+    {
+      "version": "1.17",
+      "date": "2026-03-10 15:49",
+      "changes": [
+        "Remove token from docker-compose build context"
+      ]
+    },
     {
       "version": "1.16",
       "date": "2026-03-10 12:21",
