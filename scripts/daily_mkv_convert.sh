@@ -71,8 +71,9 @@ echo "=== Daily conversion started: $(date) ===" >> "$LOGFILE"
 # The preset uses vt_h265_10bit (Apple VideoToolbox) and ca_aac (Core Audio)
 # which are macOS-only. Detect available encoders and override if needed.
 ENCODER_OVERRIDES=""
-AVAILABLE_VENCODERS=$(HandBrakeCLI --encoder-list 2>&1 | sed -n '/Video Encoders/,/Audio Encoders/p' || echo "")
-AVAILABLE_AENCODERS=$(HandBrakeCLI --encoder-list 2>&1 | sed -n '/Audio Encoders/,/$/p' || echo "")
+HB_HELP=$(HandBrakeCLI --help 2>&1 || echo "")
+AVAILABLE_VENCODERS=$(echo "$HB_HELP" | sed -n '/--encoder <string>/,/--encoder-preset/p')
+AVAILABLE_AENCODERS=$(echo "$HB_HELP" | sed -n '/--aencoder <string>/,/--audio-copy-mask/p')
 
 # Check video encoder
 PRESET_VENCODER=$(python3 -c "import json; print(json.load(open('$PRESET_FILE'))['PresetList'][0].get('VideoEncoder',''))" 2>/dev/null)

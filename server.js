@@ -876,17 +876,24 @@ app.post('/api/tmdb/lookup', async (req, res) => {
 // --- HandBrake info ---
 app.get('/api/handbrake/encoders', (req, res) => {
   try {
-    const output = execSync('HandBrakeCLI --encoder-list 2>&1', { timeout: 10000 }).toString();
+    const output = execSync('HandBrakeCLI --help 2>&1', { timeout: 10000 }).toString();
     const video = [];
     const audio = [];
-    let section = '';
-    for (const line of output.split('\n')) {
-      if (line.includes('Video Encoders')) { section = 'video'; continue; }
-      if (line.includes('Audio Encoders')) { section = 'audio'; continue; }
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('---')) continue;
-      if (section === 'video' && trimmed) video.push(trimmed);
-      if (section === 'audio' && trimmed) audio.push(trimmed);
+    // Parse video encoders: lines with only an encoder name after "--encoder <string>"
+    const vSection = output.match(/--encoder <string>[\s\S]*?(?=\s+--encoder-preset)/);
+    if (vSection) {
+      for (const line of vSection[0].split('\n').slice(1)) {
+        const trimmed = line.trim();
+        if (trimmed && /^[a-zA-Z0-9_]+$/.test(trimmed)) video.push(trimmed);
+      }
+    }
+    // Parse audio encoders: lines with only an encoder name after "--aencoder <string>"
+    const aSection = output.match(/--aencoder <string>[\s\S]*?(?=\s+--audio-copy-mask)/);
+    if (aSection) {
+      for (const line of aSection[0].split('\n').slice(1)) {
+        const trimmed = line.trim();
+        if (/^[a-zA-Z0-9_]+$/.test(trimmed) && trimmed !== 'none') audio.push(trimmed);
+      }
     }
     // Read preset to show what's configured
     let presetEncoder = '', presetAudio = '';
@@ -900,8 +907,8 @@ app.get('/api/handbrake/encoders', (req, res) => {
       audio,
       presetEncoder,
       presetAudio,
-      presetEncoderAvailable: video.some(v => v.includes(presetEncoder)),
-      presetAudioAvailable: audio.some(a => a.includes(presetAudio)),
+      presetEncoderAvailable: video.includes(presetEncoder),
+      presetAudioAvailable: audio.includes(presetAudio),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
