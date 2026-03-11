@@ -1,6 +1,16 @@
 {
-  "version": "1.32",
+  "version": "1.33",
   "history": [
+    {
+      "version": "1.33",
+      "date": "2026-03-11 22:00",
+      "changes": [
+        "Queue reorder with drag & drop",
+        "Disk space display moved to Reports page",
+        "Savings percentage in report stats",
+        "Fix auto-update: app now restarts after installing update"
+      ]
+    },
     {
       "version": "1.32",
       "date": "2026-03-11 21:00",
