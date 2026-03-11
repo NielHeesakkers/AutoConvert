@@ -492,7 +492,7 @@
             </div>
             <div class="panel" style="margin:0;padding:14px;text-align:center;">
               <div style="font-size:22px;font-weight:700;color:#4ade80;" id="statSaved">0</div>
-              <div style="font-size:11px;color:#888;margin-top:2px;">Saved</div>
+              <div style="font-size:11px;color:#888;margin-top:2px;">Saved <span id="statSavedPct" style="color:#4ade80;font-weight:600;"></span></div>
             </div>
           </div>
           <div class="panel" style="margin-top:10px;padding:12px 16px;">
@@ -507,6 +507,7 @@
               <span style="color:#888;">After conversion</span>
               <span style="color:#e0e0e0;font-weight:600;" id="statNewSize">—</span>
             </div>
+            <div id="statBarPctLabel" style="text-align:center;font-size:12px;color:#4ade80;margin-top:6px;display:none;"></div>
           </div>
         </div>
         <div id="reportsContainer"></div>
@@ -793,38 +794,74 @@ async function loadDiskSpace() {
     const res = await fetch('/api/disk-space');
     const data = await res.json();
     const el = document.getElementById('diskSpaceWarning');
-    if (data.minFreeGB != null && data.minFreeGB < 10) {
-      const isRed = data.minFreeGB < 2;
-      const bgColor = isRed ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)';
-      const borderColor = isRed ? 'rgba(239,68,68,0.35)' : 'rgba(245,158,11,0.35)';
-      const textColor = isRed ? '#ef4444' : '#f59e0b';
-      const path = data.path || '';
-      const freeGB = data.minFreeGB.toFixed(1);
-      el.className = 'panel';
-      el.style.display = 'block';
-      el.style.background = bgColor;
-      el.style.border = '1px solid ' + borderColor;
-      el.style.color = textColor;
-      el.style.marginBottom = '16px';
-      el.innerHTML = '\u26A0\uFE0F Low disk space: ' + escHtml(path) + ' has only ' + freeGB + ' GB free';
+    const dirs = data.directories || [];
+    if (dirs.length === 0) { el.style.display = 'none'; return; }
+
+    // Deduplicate by mount point (dirs on same volume show same free space)
+    const seen = new Map();
+    dirs.forEach(d => {
+      const key = d.freeGB + '|' + d.totalGB;
+      if (!seen.has(key)) seen.set(key, d);
+    });
+    const unique = [...seen.values()];
+
+    const isLow = data.minFreeGB != null && data.minFreeGB < 10;
+    const isRed = data.minFreeGB != null && data.minFreeGB < 2;
+
+    let bgColor, borderColor, textColor, icon;
+    if (isRed) {
+      bgColor = 'rgba(239,68,68,0.12)'; borderColor = 'rgba(239,68,68,0.35)'; textColor = '#ef4444'; icon = '\u26A0\uFE0F';
+    } else if (isLow) {
+      bgColor = 'rgba(245,158,11,0.12)'; borderColor = 'rgba(245,158,11,0.35)'; textColor = '#f59e0b'; icon = '\u26A0\uFE0F';
     } else {
-      el.style.display = 'none';
+      bgColor = 'rgba(74,158,255,0.06)'; borderColor = 'rgba(74,158,255,0.15)'; textColor = '#888'; icon = '\uD83D\uDCBE';
     }
+
+    const parts = unique.map(d => {
+      const freeNum = parseFloat(d.freeGB);
+      const totalNum = parseFloat(d.totalGB);
+      const freeLabel = freeNum >= 1024 ? (freeNum / 1024).toFixed(1) + ' TB' : freeNum.toFixed(1) + ' GB';
+      const totalLabel = totalNum >= 1024 ? (totalNum / 1024).toFixed(1) + ' TB' : totalNum.toFixed(0) + ' GB';
+      return freeLabel + ' free of ' + totalLabel;
+    });
+
+    el.className = 'panel';
+    el.style.display = 'block';
+    el.style.background = bgColor;
+    el.style.border = '1px solid ' + borderColor;
+    el.style.color = textColor;
+    el.style.marginBottom = '16px';
+    el.style.fontSize = '13px';
+    el.innerHTML = icon + ' ' + parts.join(' &bull; ');
   } catch { document.getElementById('diskSpaceWarning').style.display = 'none'; }
 }
 
-// --- Excluded Files ---
+// --- Excluded Files & Queue Order ---
 const excludedFiles = new Set();
+let queueOrder = []; // array of file paths in custom order
 
 function excludeFile(path) {
   excludedFiles.add(path);
+  queueOrder = queueOrder.filter(p => p !== path);
   loadConvQueue();
 }
 
 function resetExcluded() {
   excludedFiles.clear();
+  queueOrder = [];
   loadConvQueue();
 }
+
+function moveQueueItem(path, direction) {
+  const idx = queueOrder.indexOf(path);
+  if (idx < 0) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= queueOrder.length) return;
+  [queueOrder[idx], queueOrder[newIdx]] = [queueOrder[newIdx], queueOrder[idx]];
+  renderQueue();
+}
+
+let _lastQueueResults = [];
 
 // --- Status ---
 let isConvertRunning = false;
@@ -907,38 +944,61 @@ async function loadConvQueue() {
       if (tmdbData.results) results = tmdbData.results;
     } catch {}
 
-    // Filter out excluded files
-    const filteredResults = results.filter(f => !excludedFiles.has(f.path));
-    const excludedCount = excludedFiles.size;
-    const displayCount = filteredResults.length;
+    _lastQueueResults = results;
 
-    let html = '';
-    // Excluded count badge with reset
-    if (excludedCount > 0) {
-      html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:13px;color:#888;background:#1e2130;padding:4px 12px;border-radius:10px;">${excludedCount} file${excludedCount!==1?'s':''} excluded</span><button class="btn btn-ghost btn-sm" onclick="resetExcluded()">Reset</button></div>`;
+    // Initialize queue order if needed (new files or first load)
+    const visiblePaths = results.filter(f => !excludedFiles.has(f.path)).map(f => f.path);
+    if (queueOrder.length === 0) {
+      queueOrder = visiblePaths;
+    } else {
+      // Add any new files not yet in order, remove stale ones
+      const newPaths = visiblePaths.filter(p => !queueOrder.includes(p));
+      queueOrder = queueOrder.filter(p => visiblePaths.includes(p)).concat(newPaths);
     }
-    html += `<div class="panel"><div style="font-size:14px;font-weight:600;color:#e0e0e0;margin-bottom:16px;">Ready for conversion <span style="font-weight:400;color:#888;">(${displayCount} file${displayCount!==1?'s':''})</span></div>`;
 
-    let currentSection = '';
-    filteredResults.forEach(f => {
-      if (f.section !== currentSection) {
-        currentSection = f.section;
-        html += `<div class="conv-section-label">${escHtml(f.section)}</div>`;
-      }
-      const filePath = f.path || '';
-      html += `<div style="position:relative;">${renderTmdbCard(f)}<button onclick="excludeFile('${escAttr(filePath)}')" title="Remove from queue" style="position:absolute;top:10px;right:10px;background:none;border:none;color:#555;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px;line-height:1;" onmouseover="this.style.color='#ef4444';this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.color='#555';this.style.background='none'">&times;</button></div>`;
-    });
-    html += '</div>';
-    el.innerHTML = html;
+    renderQueue();
   } catch { document.getElementById('convQueue').innerHTML = ''; }
+}
+
+function renderQueue() {
+  const results = _lastQueueResults;
+  if (!results.length) return;
+  const el = document.getElementById('convQueue');
+  const resultMap = {};
+  results.forEach(f => { resultMap[f.path] = f; });
+
+  // Build ordered filtered list
+  const filteredResults = queueOrder.filter(p => resultMap[p]).map(p => resultMap[p]);
+  const excludedCount = excludedFiles.size;
+  const displayCount = filteredResults.length;
+
+  let html = '';
+  if (excludedCount > 0) {
+    html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:13px;color:#888;background:#1e2130;padding:4px 12px;border-radius:10px;">${excludedCount} file${excludedCount!==1?'s':''} excluded</span><button class="btn btn-ghost btn-sm" onclick="resetExcluded()">Reset</button></div>`;
+  }
+  html += `<div class="panel"><div style="font-size:14px;font-weight:600;color:#e0e0e0;margin-bottom:16px;">Ready for conversion <span style="font-weight:400;color:#888;">(${displayCount} file${displayCount!==1?'s':''})</span></div>`;
+
+  filteredResults.forEach((f, i) => {
+    const filePath = f.path || '';
+    const isFirst = i === 0;
+    const isLast = i === displayCount - 1;
+    html += `<div style="position:relative;">${renderTmdbCard(f)}<div style="position:absolute;top:8px;right:40px;display:flex;flex-direction:column;gap:2px;">`;
+    html += `<button onclick="moveQueueItem('${escAttr(filePath)}',-1)" title="Move up" ${isFirst ? 'disabled' : ''} style="background:none;border:none;color:${isFirst?'#333':'#666'};font-size:14px;cursor:${isFirst?'default':'pointer'};padding:1px 5px;border-radius:3px;line-height:1;" ${isFirst?'':'onmouseover="this.style.color=\'#4a9eff\';this.style.background=\'rgba(74,158,255,0.1)\'" onmouseout="this.style.color=\'#666\';this.style.background=\'none\'"'}>&#9650;</button>`;
+    html += `<button onclick="moveQueueItem('${escAttr(filePath)}',1)" title="Move down" ${isLast ? 'disabled' : ''} style="background:none;border:none;color:${isLast?'#333':'#666'};font-size:14px;cursor:${isLast?'default':'pointer'};padding:1px 5px;border-radius:3px;line-height:1;" ${isLast?'':'onmouseover="this.style.color=\'#4a9eff\';this.style.background=\'rgba(74,158,255,0.1)\'" onmouseout="this.style.color=\'#666\';this.style.background=\'none\'"'}>&#9660;</button>`;
+    html += `</div><button onclick="excludeFile('${escAttr(filePath)}')" title="Remove from queue" style="position:absolute;top:10px;right:10px;background:none;border:none;color:#555;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px;line-height:1;" onmouseover="this.style.color='#ef4444';this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.color='#555';this.style.background='none'">&times;</button></div>`;
+  });
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 async function startConvert() {
   try {
-    const body = excludedFiles.size > 0 ? JSON.stringify({ exclude: [...excludedFiles] }) : '{}';
-    const res = await fetch('/api/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    const payload = {};
+    if (excludedFiles.size > 0) payload.exclude = [...excludedFiles];
+    if (queueOrder.length > 0) payload.order = queueOrder.filter(p => !excludedFiles.has(p));
+    const res = await fetch('/api/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
-    if (data.started) { toast('Conversion started'); excludedFiles.clear(); loadStatus(); }
+    if (data.started) { toast('Conversion started'); excludedFiles.clear(); queueOrder = []; loadStatus(); }
     else toast(data.error || 'Error', true);
   } catch { toast('Failed to start', true); }
 }
@@ -1401,10 +1461,15 @@ async function loadReportStats() {
     document.getElementById('statSeries').textContent=s.series;
     document.getElementById('statProcessed').textContent=fmtSize(s.totalOld);
     document.getElementById('statSaved').textContent=fmtSize(s.saved);
+    const savedPct=s.totalOld>0?Math.round(((s.totalOld-s.totalNew)/s.totalOld)*100):0;
+    document.getElementById('statSavedPct').textContent=savedPct>0?'('+savedPct+'%)':'';
     document.getElementById('statOldSize').textContent=fmtSize(s.totalOld);
     document.getElementById('statNewSize').textContent=fmtSize(s.totalNew);
-    const pct=s.totalOld>0?Math.round((s.totalNew/s.totalOld)*100):0;
-    document.getElementById('statBarNew').style.width=pct+'%';
+    const barPct=s.totalOld>0?Math.round((s.totalNew/s.totalOld)*100):0;
+    document.getElementById('statBarNew').style.width=barPct+'%';
+    const barLabel=document.getElementById('statBarPctLabel');
+    if(savedPct>0){barLabel.textContent=fmtSize(s.totalOld)+' → '+fmtSize(s.totalNew)+' ('+savedPct+'% smaller)';barLabel.style.display='';}
+    else{barLabel.style.display='none';}
   } catch {}
 }
 let reportsOffset=0; const REPORTS_LIMIT=10; let reportsHasMore=true;

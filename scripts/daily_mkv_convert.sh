@@ -176,6 +176,35 @@ done
 TOTAL_COUNT=$(wc -l < "$MASTER_LIST" | tr -d ' ')
 echo "  Total $TOTAL_COUNT MKV files found across all directories" >> "$LOGFILE"
 
+# ─── Apply custom file order if provided ───
+if [ -n "$FILE_ORDER" ] && [ "$TOTAL_COUNT" -gt 0 ]; then
+  python3 -c "
+import sys, os
+order_paths = [p.strip() for p in '''$FILE_ORDER'''.strip().split('\n') if p.strip()]
+# Read master list entries (section|path)
+entries = {}
+ordered = []
+with open('$MASTER_LIST') as f:
+    for line in f:
+        line = line.strip()
+        if '|' not in line: continue
+        section, path = line.split('|', 1)
+        entries[path] = (section, path)
+# Add ordered files first
+for p in order_paths:
+    if p in entries:
+        s, pa = entries.pop(p)
+        ordered.append(f'{s}|{pa}')
+# Then remaining files not in order
+for path in sorted(entries.keys()):
+    s, pa = entries[path]
+    ordered.append(f'{s}|{pa}')
+with open('$MASTER_LIST', 'w') as f:
+    for line in ordered:
+        f.write(line + '\n')
+" 2>/dev/null && echo "  Applied custom file order" >> "$LOGFILE"
+fi
+
 # ─── Build initial progress JSON with complete file list ───
 if [ "$TOTAL_COUNT" -gt 0 ]; then
   python3 -c "

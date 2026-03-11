@@ -1,6 +1,15 @@
 {
-  "version": "1.31",
+  "version": "1.32",
   "history": [
+    {
+      "version": "1.32",
+      "date": "2026-03-11 21:00",
+      "changes": [
+        "Queue reorder: move files up/down to set conversion order",
+        "Show available disk space on conversion page",
+        "Show savings percentage in report stats"
+      ]
+    },
     {
       "version": "1.31",
       "date": "2026-03-11 19:30",

@@ -131,7 +131,7 @@ function checkDiskSpaceWarnings(mediaDirs) {
   return warnings;
 }
 
-function runConvertScript(excludeFiles = []) {
+function runConvertScript(excludeFiles = [], fileOrder = []) {
   const mediaDirs = getMediaDirs();
   const config = readConfig();
   const autoDelete = config.app?.autoDelete !== false;
@@ -154,6 +154,7 @@ function runConvertScript(excludeFiles = []) {
     MEDIA_DIRS: mediaDirs.join(':'),
     DELETE_ORIGINALS: autoDelete ? '1' : '0',
     EXCLUDE_FILES: excludeFiles.join('\n'),
+    FILE_ORDER: fileOrder.join('\n'),
     PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
   };
   console.log(`[convert] Starting script: ${SCRIPT_PATH}`);
@@ -474,8 +475,9 @@ app.post('/api/convert', (req, res) => {
     return res.status(409).json({ error: 'Conversion already running' });
   }
   const excludeFiles = Array.isArray(req.body?.exclude) ? req.body.exclude : [];
+  const fileOrder = Array.isArray(req.body?.order) ? req.body.order : [];
   const diskWarnings = checkDiskSpaceWarnings(getMediaDirs());
-  const pid = runConvertScript(excludeFiles);
+  const pid = runConvertScript(excludeFiles, fileOrder);
   const result = { started: true, pid };
   if (diskWarnings.length > 0) {
     result.diskWarnings = diskWarnings;
