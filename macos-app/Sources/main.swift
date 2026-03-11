@@ -468,11 +468,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func installUpdate(dmgPath: URL) {
-        // Mount DMG, copy app, unmount, relaunch
+        // Write a standalone update script that survives app termination
+        let scriptPath = "/tmp/autoconvert_update.sh"
+        let pid = ProcessInfo.processInfo.processIdentifier
         let script = """
         #!/bin/bash
         set -e
-        MOUNT_POINT=$(hdiutil attach "\(dmgPath.path)" -nobrowse -noverify | grep "/Volumes/" | awk -F'\t' '{print $NF}')
+        # Wait for the current app to quit
+        while kill -0 \(pid) 2>/dev/null; do sleep 0.5; done
+        MOUNT_POINT=$(hdiutil attach "\(dmgPath.path)" -nobrowse -noverify | grep "/Volumes/" | awk -F'\\t' '{print $NF}')
         if [ -d "$MOUNT_POINT/AutoConvert.app" ]; then
             rm -rf "/Applications/AutoConvert.app"
             cp -R "$MOUNT_POINT/AutoConvert.app" "/Applications/"
@@ -481,18 +485,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             open "/Applications/AutoConvert.app"
         else
             hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
-            exit 1
         fi
+        rm -f "\(scriptPath)"
         """
 
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/bash")
-        proc.arguments = ["-c", script]
-
         do {
+            try script.write(toFile: scriptPath, atomically: true, encoding: .utf8)
+            // Make executable and run detached via launchd so it survives app exit
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/bin/bash")
+            proc.arguments = ["-c", "chmod +x \(scriptPath) && nohup \(scriptPath) &>/dev/null &"]
             try proc.run()
-            // Quit current app after giving install script a moment
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            proc.waitUntilExit()
+
+            // Now quit — the detached script will wait for us to die, then install & relaunch
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 self.serverManager.stop()
                 NSApplication.shared.terminate(nil)
             }
