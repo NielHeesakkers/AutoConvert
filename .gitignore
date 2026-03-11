@@ -1,5 +1,12 @@
 node_modules/
 *.log
-server.log
-config/config.json
 config.json
+.DS_Store
+
+# macOS app build artifacts
+macos-app/build/
+macos-app/.node-cache/
+
+# Runtime files
+backups/
+reports/

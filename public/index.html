@@ -207,6 +207,16 @@
     .backup-name { flex: 1; color: #ccc; }
     .backup-size { color: #666; font-size: 12px; }
 
+    .preset-card { background:#0f1117; border-radius:10px; border:1px solid #1e2130; padding:16px; margin-bottom:10px; }
+    .preset-card.active { border-color:#6366f1; }
+    .preset-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .preset-card-name { font-weight:600; font-size:15px; color:#e0e0e0; }
+    .preset-card-badge { font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; background:rgba(99,102,241,0.15); color:#6366f1; }
+    .preset-card-row { display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid #1a1a2e; font-size:13px; }
+    .preset-card-row span:first-child { color:#888; }
+    .preset-card-row span:last-child { color:#e0e0e0; }
+    .preset-card-actions { display:flex; gap:8px; margin-top:12px; padding-top:10px; border-top:1px solid #1e2130; }
+
     .toast { position: fixed; bottom: 20px; right: 20px; background: #22c55e; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
     .toast.error { background: #ef4444; }
     .toast.show { opacity: 1; }
@@ -264,6 +274,7 @@
               <span id="statusText">Idle</span>
             </div>
             <div style="display:flex;gap:8px;">
+              <button class="btn btn-ghost" id="btnScan" onclick="scanDirectories()">Scan directories</button>
               <button class="btn btn-primary" id="btnStart" onclick="startConvert()">Start Conversion</button>
               <button class="btn btn-danger" id="btnStop" onclick="stopConvert()" style="display:none;">Stop</button>
             </div>
@@ -281,6 +292,39 @@
 
       <!-- Rapporten -->
       <div class="section" id="sec-reports">
+        <div id="reportStats" style="display:none;margin-bottom:16px;">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+            <div class="panel" style="margin:0;padding:14px;text-align:center;">
+              <div style="font-size:22px;font-weight:700;color:#4a9eff;" id="statMovies">0</div>
+              <div style="font-size:11px;color:#888;margin-top:2px;">Movies</div>
+            </div>
+            <div class="panel" style="margin:0;padding:14px;text-align:center;">
+              <div style="font-size:22px;font-weight:700;color:#c084fc;" id="statSeries">0</div>
+              <div style="font-size:11px;color:#888;margin-top:2px;">Series</div>
+            </div>
+            <div class="panel" style="margin:0;padding:14px;text-align:center;">
+              <div style="font-size:22px;font-weight:700;color:#e0e0e0;" id="statProcessed">0</div>
+              <div style="font-size:11px;color:#888;margin-top:2px;">Processed</div>
+            </div>
+            <div class="panel" style="margin:0;padding:14px;text-align:center;">
+              <div style="font-size:22px;font-weight:700;color:#4ade80;" id="statSaved">0</div>
+              <div style="font-size:11px;color:#888;margin-top:2px;">Saved</div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:10px;padding:12px 16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;">
+              <span style="color:#888;">Original</span>
+              <span style="color:#e0e0e0;font-weight:600;" id="statOldSize">—</span>
+            </div>
+            <div style="width:100%;height:6px;background:#1e2130;border-radius:3px;margin:8px 0;overflow:hidden;position:relative;">
+              <div id="statBarNew" style="height:100%;background:#6366f1;border-radius:3px;transition:width 0.5s;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;">
+              <span style="color:#888;">After conversion</span>
+              <span style="color:#e0e0e0;font-weight:600;" id="statNewSize">—</span>
+            </div>
+          </div>
+        </div>
         <div id="reportsContainer"></div>
         <button class="report-load-more" id="btnLoadMore" onclick="loadMoreReports()" style="display:none;">Load more</button>
         <button class="btn btn-sm btn-danger-outline" onclick="deleteAllLogs()" style="display:block;width:100%;margin-top:14px;">Clear all reports</button>
@@ -303,18 +347,73 @@
       <!-- Instellingen -->
       <div class="section" id="sec-settings">
         <div class="tabs" id="settingsTabs">
-          <div class="tab active" data-tab="tab-dirs">Directories</div>
+          <div class="tab active" data-tab="tab-general">General</div>
+          <div class="tab" data-tab="tab-dirs">Media</div>
           <div class="tab" data-tab="tab-schedule">Schedule</div>
           <div class="tab" data-tab="tab-smtp">Mail Server</div>
           <div class="tab" data-tab="tab-preset">HandBrake</div>
-          <div class="tab" data-tab="tab-backup">Backup</div>
-          <div class="tab" data-tab="tab-export">Import/Export</div>
+        </div>
+
+        <!-- General -->
+        <div class="tab-content active" id="tab-general">
+          <div class="panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div>
+                <div class="conv-section-label" style="margin-top:0;">Delete originals after encoding</div>
+                <p style="font-size:13px;color:#888;margin:0;">Automatically remove original MKV files after successful conversion.</p>
+              </div>
+              <label class="toggle"><input type="checkbox" id="appAutoDelete" checked onchange="toggleAutoDelete(this.checked)"><span class="slider"></span></label>
+            </div>
+            <div id="autoDeleteWarning" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:8px;font-size:13px;color:#f59e0b;">
+              ⚠️ Original MKV files will be permanently deleted after encoding. Make sure you have backups of your media.
+            </div>
+          </div>
+          <div class="panel" style="margin-top:14px;">
+            <div class="conv-section-label" style="margin-top:0;">Server Port</div>
+            <p style="font-size:13px;color:#888;margin-bottom:10px;">The port the web interface runs on. Requires an app restart to take effect.</p>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <input type="number" id="appPort" min="1" max="65535" style="width:120px;" placeholder="3742">
+              <button class="btn btn-primary btn-sm" onclick="saveAppSettings()">Save</button>
+              <span id="appPortRestart" style="display:none;font-size:13px;color:#f59e0b;">Restart the app to apply</span>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <span style="font-size:14px;font-weight:600;">Backups</span>
+              <button class="btn btn-primary btn-sm" onclick="createBackup()">New backup</button>
+            </div>
+            <div class="conv-section-label">Backup Directory</div>
+            <p style="font-size:13px;color:#888;margin-bottom:10px;">Where backup files are stored.</p>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <input type="text" id="appBackupDir" style="flex:1;" placeholder="/path/to/backups" readonly>
+              <button class="btn btn-ghost btn-sm" onclick="browseBackupDir()">Browse…</button>
+            </div>
+            <div id="backupList"><div style="color:#555;font-size:13px;">Loading...</div></div>
+          </div>
+          <div class="panel" style="margin-top:14px;">
+            <div class="conv-section-label" style="margin-top:0;">Import / Export</div>
+            <p style="font-size:13px;color:#888;margin-bottom:14px;">Export all settings (config + HandBrake preset) to import on another installation.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" onclick="exportSettings()">Export</button>
+              <label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0;">
+                Import
+                <input type="file" accept=".json" style="display:none;" onchange="importSettings(this)">
+              </label>
+            </div>
+          </div>
         </div>
 
         <!-- Mappen -->
-        <div class="tab-content active" id="tab-dirs">
-          <p style="font-size:13px;color:#888;margin-bottom:14px;">These directories are scanned for MKV files to convert. Paths are configured via Docker volume mounts.</p>
+        <div class="tab-content" id="tab-dirs">
+          <p style="font-size:13px;color:#888;margin-bottom:14px;">These directories are scanned for MKV files to convert.</p>
           <div id="dirContainer"><div class="panel" style="color:#555;">Loading...</div></div>
+          <div class="panel" style="margin-top:12px;">
+            <div class="conv-section-label" style="margin-top:0;">Add directory</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="text" id="newMediaDir" placeholder="/Volumes/Media/Movies" style="flex:1;">
+              <button class="btn btn-primary btn-sm" onclick="addMediaDir()">Add</button>
+            </div>
+          </div>
         </div>
 
         <!-- Planning -->
@@ -362,48 +461,29 @@
               <label><input type="checkbox" id="smtpTls" checked> TLS</label>
               <label><input type="checkbox" id="smtpStarttls" checked> STARTTLS</label>
             </div>
-            <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" onclick="saveSmtp()">Save</button></div>
+            <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" onclick="saveSmtp()">Save</button>
+              <button class="btn btn-ghost btn-sm" onclick="testSmtpConnection()">Test connection</button>
+              <button class="btn btn-ghost btn-sm" onclick="testSmtp()">Send test email</button>
+              <span id="smtpTestResult" style="font-size:12px;display:none;"></span>
+            </div>
           </div>
         </div>
 
         <!-- HandBrake -->
         <div class="tab-content" id="tab-preset">
           <div class="panel">
-            <div id="presetInfo" style="margin-bottom:14px;"><div style="color:#555;">Loading...</div></div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <span style="font-size:14px;font-weight:600;">Presets</span>
               <label class="btn btn-primary btn-sm" style="cursor:pointer;margin:0;">
-                Upload new preset
+                Upload preset
                 <input type="file" accept=".json" id="presetUpload" style="display:none;" onchange="uploadPreset(this)">
               </label>
-              <button class="btn btn-ghost btn-sm" onclick="downloadPreset()">Download</button>
             </div>
+            <div id="presetList"><div style="color:#555;">Loading...</div></div>
           </div>
         </div>
 
-        <!-- Backup -->
-        <div class="tab-content" id="tab-backup">
-          <div class="panel">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-              <span style="font-size:14px;font-weight:600;">Local backups</span>
-              <button class="btn btn-primary btn-sm" onclick="createBackup()">New backup</button>
-            </div>
-            <div id="backupList"><div style="color:#555;font-size:13px;">Loading...</div></div>
-          </div>
-        </div>
-
-        <!-- Import/Export -->
-        <div class="tab-content" id="tab-export">
-          <div class="panel">
-            <p style="font-size:13px;color:#888;margin-bottom:14px;">Export all settings (config + HandBrake preset) to import on another installation.</p>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button class="btn btn-primary btn-sm" onclick="exportSettings()">Export</button>
-              <label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0;">
-                Import
-                <input type="file" accept=".json" style="display:none;" onchange="importSettings(this)">
-              </label>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- Versiegeschiedenis -->
@@ -414,6 +494,16 @@
     </div>
   </main>
   <div class="toast" id="toast"></div>
+  <div id="modalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:none;align-items:center;justify-content:center;">
+    <div style="background:#1e1e2e;border:1px solid #333;border-radius:12px;padding:24px;width:360px;box-shadow:0 8px 32px rgba(0,0,0,.4);">
+      <div id="modalTitle" style="font-size:15px;font-weight:600;color:#e0e0e0;margin-bottom:16px;"></div>
+      <input type="text" id="modalInput" style="width:100%;box-sizing:border-box;margin-bottom:18px;" onkeydown="if(event.key==='Enter')document.getElementById('modalOk').click()">
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="closeModal(null)">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="modalOk" onclick="closeModal(document.getElementById('modalInput').value)">OK</button>
+      </div>
+    </div>
+  </div>
 
 <script>
 // --- Navigation ---
@@ -757,14 +847,37 @@ async function loadDirectories() {
     const data = await res.json();
     const dirs = data.directories || [];
     const container = document.getElementById('dirContainer');
-    if (!dirs.length) { container.innerHTML = '<div class="panel" style="color:#555;">No directories configured.</div>'; return; }
+    if (!dirs.length) { container.innerHTML = '<div class="panel" style="color:#555;">No directories configured. Add one below.</div>'; return; }
     container.innerHTML = dirs.map(d => {
-      const statusText = !d.exists ? 'Directory not found' : d.fileCount === 0 ? 'No MKV files' : `${d.fileCount} file${d.fileCount!==1?'s':''} ready for conversion`;
       const statusColor = !d.exists ? '#ef4444' : d.fileCount > 0 ? '#4ade80' : '#555';
       const countLabel = d.scanning ? 'Scanning...' : `${d.fileCount} MKV`;
-      return `<div class="dir-header"><span class="dir-dot ${d.exists?'exists':'missing'}"></span><span class="dir-name">${escHtml(d.name)}</span><span class="dir-path">${escHtml(d.path)}</span><span class="dir-count" style="color:${statusColor}">${countLabel}</span></div>`;
+      const removeBtn = `<button class="btn-icon delete" onclick="removeMediaDir('${escAttr(d.path)}')" title="Remove" style="margin-left:auto;font-size:16px;color:#555;background:none;border:none;cursor:pointer;padding:2px 6px;">&times;</button>`;
+      return `<div class="dir-header" style="display:flex;align-items:center;"><span class="dir-dot ${d.exists?'exists':'missing'}"></span><span class="dir-name">${escHtml(d.name)}</span><span class="dir-path">${escHtml(d.path)}</span><span class="dir-count" style="color:${statusColor}">${countLabel}</span>${removeBtn}</div>`;
     }).join('');
   } catch { document.getElementById('dirContainer').innerHTML = '<div class="panel" style="color:#555;">Could not load directories.</div>'; }
+}
+
+async function addMediaDir() {
+  const input = document.getElementById('newMediaDir');
+  const dir = input.value.trim();
+  if (!dir) { toast('Enter a directory path', true); return; }
+  if (!dir.startsWith('/')) { toast('Path must be absolute (start with /)', true); return; }
+  try {
+    const res = await fetch('/api/media-dirs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dir }) });
+    const d = await res.json();
+    if (d.ok) { toast('Directory added'); input.value = ''; loadDirectories(); }
+    else toast(d.error || 'Error', true);
+  } catch { toast('Failed to add directory', true); }
+}
+
+async function removeMediaDir(dir) {
+  if (!confirm(`Remove "${dir}" from scan list?`)) return;
+  try {
+    const res = await fetch('/api/media-dirs', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dir }) });
+    const d = await res.json();
+    if (d.ok) { toast('Directory removed'); loadDirectories(); }
+    else toast(d.error || 'Error', true);
+  } catch { toast('Failed to remove directory', true); }
 }
 
 // --- Schedule ---
@@ -788,6 +901,55 @@ async function saveSchedule() {
   try { const res=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hour,minute,scanInterval})}); const d=await res.json(); if(d.ok) toast('Schedule saved'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
 }
 
+// --- Scan ---
+async function scanDirectories() {
+  const btn=document.getElementById('btnScan');
+  btn.disabled=true; btn.textContent='Scanning…';
+  try { await fetch('/api/scan',{method:'POST'}); } catch {}
+  setTimeout(()=>{btn.disabled=false;btn.textContent='Scan directories';loadConvQueue();},2000);
+}
+
+// --- App Settings ---
+async function loadAppSettings() {
+  try {
+    const res=await fetch('/api/app-settings'); const d=await res.json();
+    document.getElementById('appPort').value=d.port;
+    document.getElementById('appBackupDir').value=d.backupDir||'';
+    const ad=d.autoDelete!==false;
+    document.getElementById('appAutoDelete').checked=ad;
+    document.getElementById('autoDeleteWarning').style.display=ad?'block':'none';
+  } catch {}
+}
+async function toggleAutoDelete(on) {
+  document.getElementById('autoDeleteWarning').style.display=on?'block':'none';
+  try {
+    const res=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({autoDelete:on})});
+    const d=await res.json();
+    if(d.ok) toast(on?'Auto-delete enabled':'Auto-delete disabled');
+    else toast(d.error||'Error',true);
+  } catch { toast('Failed to save',true); }
+}
+async function saveAppSettings() {
+  const port=parseInt(document.getElementById('appPort').value,10);
+  if(!port||port<1||port>65535){toast('Port must be between 1 and 65535',true);return;}
+  const backupDir=document.getElementById('appBackupDir').value.trim();
+  try { const res=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({port,backupDir})}); const d=await res.json(); if(d.ok){toast('Settings saved');if(d.restart)document.getElementById('appPortRestart').style.display='inline';loadBackups();}else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
+}
+
+async function browseBackupDir() {
+  const cur=document.getElementById('appBackupDir').value.trim();
+  try {
+    const res=await fetch('/api/choose-directory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({default:cur})});
+    const d=await res.json();
+    if(d.ok&&d.path) {
+      document.getElementById('appBackupDir').value=d.path;
+      const sv=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({backupDir:d.path})});
+      const r=await sv.json();
+      if(r.ok){toast('Backup directory saved');loadBackups();}else toast(r.error||'Error',true);
+    }
+  } catch { toast('Could not open folder picker',true); }
+}
+
 // --- SMTP ---
 async function loadSmtp() {
   try { const res=await fetch('/api/smtp'); const d=await res.json(); document.getElementById('smtpHost').value=d.host; document.getElementById('smtpPort').value=d.port; document.getElementById('smtpUser').value=d.user; document.getElementById('smtpPassword').value=d.password; document.getElementById('smtpFrom').value=d.from; document.getElementById('smtpTls').checked=d.tls; document.getElementById('smtpStarttls').checked=d.starttls; } catch {}
@@ -796,6 +958,44 @@ async function saveSmtp() {
   const smtp={host:document.getElementById('smtpHost').value.trim(),port:parseInt(document.getElementById('smtpPort').value,10),user:document.getElementById('smtpUser').value.trim(),password:document.getElementById('smtpPassword').value,from:document.getElementById('smtpFrom').value.trim(),tls:document.getElementById('smtpTls').checked,starttls:document.getElementById('smtpStarttls').checked};
   if(!smtp.host||!smtp.user||!smtp.from){toast('Enter host, username, and sender',true);return;}
   try { const res=await fetch('/api/smtp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(smtp)}); const d=await res.json(); if(d.ok) toast('Mail server saved'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
+}
+async function testSmtpConnection() {
+  const el=document.getElementById('smtpTestResult');
+  el.style.display='inline'; el.style.color='#888'; el.textContent='Testing...';
+  try {
+    const res=await fetch('/api/test-smtp',{method:'POST'});
+    const d=await res.json();
+    if(d.ok){el.style.color='#4ade80';el.textContent='Connection OK';}
+    else{el.style.color='#ef4444';el.textContent=d.error||'Failed';}
+  } catch {el.style.color='#ef4444';el.textContent='Failed';}
+  setTimeout(()=>el.style.display='none',4000);
+}
+let _modalResolve=null;
+function openModal(title,placeholder){
+  document.getElementById('modalTitle').textContent=title;
+  const inp=document.getElementById('modalInput');
+  inp.value='';inp.placeholder=placeholder||'';
+  const ov=document.getElementById('modalOverlay');
+  ov.style.display='flex';
+  inp.focus();
+  return new Promise(r=>{_modalResolve=r;});
+}
+function closeModal(val){
+  document.getElementById('modalOverlay').style.display='none';
+  if(_modalResolve){_modalResolve(val);_modalResolve=null;}
+}
+async function testSmtp() {
+  const email=await openModal('Send test email to:','user@example.com');
+  if(!email||!email.trim()) return;
+  const el=document.getElementById('smtpTestResult');
+  el.style.display='inline'; el.style.color='#888'; el.textContent='Sending...';
+  try {
+    const res=await fetch('/api/test-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.trim()})});
+    const d=await res.json();
+    if(d.ok){el.style.color='#4ade80';el.textContent='Sent!';}
+    else{el.style.color='#ef4444';el.textContent=d.error||'Failed';}
+  } catch {el.style.color='#ef4444';el.textContent='Failed';}
+  setTimeout(()=>el.style.display='none',4000);
 }
 
 // --- Recipients ---
@@ -832,23 +1032,59 @@ async function testAllActive() {
   if(!fail) toast(`Sent to ${ok} recipient(s)`); else toast(`${ok} sent, ${fail} failed`,true);
 }
 
-// --- Preset ---
-async function loadPreset() {
+// --- Presets ---
+function fmtEncoder(e){const m={'vt_h265_10bit':'H.265 10-bit (VideoToolbox)','vt_h265':'H.265 (VideoToolbox)','vt_h264':'H.264 (VideoToolbox)','x265_10bit':'H.265 10-bit (x265)','x265':'H.265 (x265)','x264':'H.264 (x264)','ca_aac':'AAC (CoreAudio)','av_aac':'AAC','copy:aac':'AAC Passthru','ac3':'AC3','eac3':'E-AC3','copy':'Auto Passthru'};return m[e]||e;}
+function fmtFormat(f){const m={'av_mp4':'MP4','av_mkv':'MKV','av_webm':'WebM'};return m[f]||f;}
+async function loadPresets() {
   try {
-    const res=await fetch('/api/preset'); const d=await res.json(); const info=document.getElementById('presetInfo');
-    if(d.error&&!d.name){info.innerHTML='<div style="color:#555;">No preset. Upload a HandBrake preset file.</div>';return;}
-    const mod=d.modified?new Date(d.modified).toLocaleString('en-US',{timeZone:'Europe/Amsterdam'}):'';
-    info.innerHTML=`<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#0f1117;border-radius:8px;"><div style="flex:1;"><div style="font-weight:600;font-size:15px;color:#e0e0e0;">${escHtml(d.name)}</div>${d.description?`<div style="font-size:12px;color:#888;margin-top:2px;">${escHtml(d.description)}</div>`:''}<div style="font-size:11px;color:#555;margin-top:4px;">${escHtml(d.filename||'')}${mod?' &middot; '+mod:''}</div></div></div>`;
-  } catch { document.getElementById('presetInfo').innerHTML='<div style="color:#555;">Could not load preset.</div>'; }
+    const res=await fetch('/api/presets'); const d=await res.json();
+    const container=document.getElementById('presetList');
+    if(!d.presets||!d.presets.length){container.innerHTML='<div style="color:#555;">No presets. Upload a HandBrake preset file.</div>';return;}
+    container.innerHTML=d.presets.map(p=>{
+      const dt=p.details||{};
+      const qualLabel=dt.videoQualityType===2?`Quality: ${dt.videoQuality}`:`Bitrate: ${dt.videoBitrate} kbps`;
+      const mod=p.modified?new Date(p.modified).toLocaleString('en-US',{timeZone:'Europe/Amsterdam'}):'';
+      const rows=[['Format',fmtFormat(dt.format)],['Video',fmtEncoder(dt.videoEncoder)+(dt.videoPreset?` (${dt.videoPreset})`:'')],['Quality',qualLabel],['Resolution',dt.resolution||'Auto'],['Audio',fmtEncoder(dt.audioEncoder)+` ${dt.audioBitrate}kbps ${dt.audioMixdown}`],['Subtitles',dt.subtitles],['Chapters',dt.chapterMarkers?'Yes':'No'],['Multi-pass',dt.multiPass?'Yes':'No']];
+      const grid=rows.map(([k,v])=>`<div class="preset-card-row"><span>${k}</span><span>${escHtml(v)}</span></div>`).join('');
+      const actions=[];
+      if(!p.active) actions.push(`<button class="btn btn-primary btn-sm" onclick="activatePreset('${escAttr(p.filename)}')">Set as active</button>`);
+      if(!p.active) actions.push(`<button class="btn btn-ghost btn-sm" style="color:#ef4444;" onclick="deletePreset('${escAttr(p.filename)}')">Delete</button>`);
+      actions.push(`<button class="btn btn-ghost btn-sm" onclick="downloadPreset('${escAttr(p.filename)}')">Download</button>`);
+      return `<div class="preset-card${p.active?' active':''}"><div class="preset-card-header"><span class="preset-card-name">${escHtml(p.name)}</span>${p.active?'<span class="preset-card-badge">Active</span>':''}</div>${p.description?`<div style="font-size:12px;color:#888;margin-bottom:8px;">${escHtml(p.description)}</div>`:''}<div style="font-size:11px;color:#555;margin-bottom:10px;">${escHtml(p.filename)}${mod?' &middot; '+mod:''}</div>${grid}<div class="preset-card-actions">${actions.join('')}</div></div>`;
+    }).join('');
+  } catch { document.getElementById('presetList').innerHTML='<div style="color:#555;">Could not load presets.</div>'; }
 }
 async function uploadPreset(input) {
   const file=input.files[0]; if(!file) return;
   if(!file.name.endsWith('.json')){toast('Only JSON files',true);input.value='';return;}
-  try { const text=await file.text(); JSON.parse(text); const res=await fetch('/api/preset',{method:'POST',headers:{'Content-Type':'application/json'},body:text}); const d=await res.json();
-    if(d.ok){toast(`Preset "${d.name}" uploaded`);loadPreset();}else toast(d.error||'Error',true);
+  try {
+    const text=await file.text(); JSON.parse(text);
+    let res=await fetch('/api/presets',{method:'POST',headers:{'Content-Type':'application/json'},body:text});
+    let d=await res.json();
+    if(d.exists&&confirm(`Preset "${d.filename}" already exists. Overwrite?`)){
+      res=await fetch('/api/presets?overwrite=true',{method:'POST',headers:{'Content-Type':'application/json'},body:text});
+      d=await res.json();
+    }
+    if(d.ok){toast(`Preset "${d.name}" uploaded`);loadPresets();}
+    else if(!d.exists) toast(d.error||'Error',true);
   } catch { toast('Invalid JSON',true); } input.value='';
 }
-function downloadPreset() { window.open('/api/preset/download','_blank'); }
+async function activatePreset(filename) {
+  try {
+    const res=await fetch(`/api/presets/${encodeURIComponent(filename)}/activate`,{method:'POST'});
+    const d=await res.json();
+    if(d.ok){toast('Preset activated');loadPresets();}else toast(d.error||'Error',true);
+  } catch { toast('Error',true); }
+}
+async function deletePreset(filename) {
+  if(!confirm(`Delete preset "${filename}"?`)) return;
+  try {
+    const res=await fetch(`/api/presets/${encodeURIComponent(filename)}`,{method:'DELETE'});
+    const d=await res.json();
+    if(d.ok){toast('Preset deleted');loadPresets();}else toast(d.error||'Error',true);
+  } catch { toast('Error',true); }
+}
+function downloadPreset(filename) { window.open(`/api/presets/${encodeURIComponent(filename)}/download`,'_blank'); }
 
 // --- Backup ---
 async function loadBackups() {
@@ -857,7 +1093,7 @@ async function loadBackups() {
     if(!d.backups||!d.backups.length){list.innerHTML='<div style="color:#555;font-size:13px;">No backups available.</div>';return;}
     list.innerHTML=d.backups.map(b=>{
       const date=b.created?new Date(b.created).toLocaleString('en-US',{timeZone:'Europe/Amsterdam'}):'';
-      return `<div class="backup-item"><span class="backup-name">${date||escHtml(b.filename)}</span><span class="backup-size">${fmtBytes(b.size)}</span><button class="btn btn-ghost btn-sm" onclick="restoreBackup('${escAttr(b.filename)}')">Restore</button><button class="btn-icon delete" onclick="deleteBackup('${escAttr(b.filename)}')" style="font-size:18px;">&times;</button></div>`;
+      return `<div class="backup-item"><span class="backup-name">${date||escHtml(b.filename)}</span><span class="backup-size">${fmtBytes(b.size)}</span><button class="btn btn-ghost btn-sm" onclick="revealBackup('${escAttr(b.filename)}')">Show in Finder</button><button class="btn btn-ghost btn-sm" onclick="restoreBackup('${escAttr(b.filename)}')">Restore</button><button class="btn-icon delete" onclick="deleteBackup('${escAttr(b.filename)}')" style="font-size:18px;">&times;</button></div>`;
     }).join('');
   } catch { document.getElementById('backupList').innerHTML='<div style="color:#555;font-size:13px;">Could not load backups.</div>'; }
 }
@@ -867,8 +1103,11 @@ async function createBackup() {
 async function restoreBackup(filename) {
   if(!confirm('Are you sure you want to restore this backup? Current settings will be overwritten.')) return;
   try { const res=await fetch('/api/backups/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename})}); const d=await res.json();
-    if(d.ok){toast('Backup restored');loadSmtp();loadSchedule();loadRecipients();loadPreset();}else toast(d.error||'Error',true);
+    if(d.ok){toast('Backup restored');loadSmtp();loadSchedule();loadRecipients();loadPresets();}else toast(d.error||'Error',true);
   } catch { toast('Failed to restore',true); }
+}
+async function revealBackup(filename) {
+  try { await fetch('/api/backups/reveal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename})}); } catch { toast('Could not open Finder',true); }
 }
 async function deleteBackup(filename) {
   if(!confirm('Delete backup?')) return;
@@ -884,13 +1123,35 @@ async function importSettings(input) {
     if(data.type!=='autoconvert-export'){toast('Invalid export file',true);input.value='';return;}
     if(!confirm('Import settings? Current config will be overwritten.')) {input.value='';return;}
     const res=await fetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:text}); const d=await res.json();
-    if(d.ok){toast('Settings imported');loadSmtp();loadSchedule();loadRecipients();loadPreset();}else toast(d.error||'Error',true);
+    if(d.ok){toast('Settings imported');loadSmtp();loadSchedule();loadRecipients();loadPresets();}else toast(d.error||'Error',true);
   } catch { toast('Invalid file',true); } input.value='';
 }
 
 // --- Reports ---
+function fmtSize(bytes) {
+  if(!bytes||bytes<=0) return '0 B';
+  const u=['B','KB','MB','GB','TB']; let i=0,s=bytes;
+  while(s>=1024&&i<u.length-1){s/=1024;i++;}
+  return s.toFixed(i<=1?0:1)+' '+u[i];
+}
+async function loadReportStats() {
+  try {
+    const res=await fetch('/api/reports/stats'); const s=await res.json();
+    const total=s.movies+s.series;
+    if(total===0){document.getElementById('reportStats').style.display='none';return;}
+    document.getElementById('reportStats').style.display='';
+    document.getElementById('statMovies').textContent=s.movies;
+    document.getElementById('statSeries').textContent=s.series;
+    document.getElementById('statProcessed').textContent=fmtSize(s.totalOld);
+    document.getElementById('statSaved').textContent=fmtSize(s.saved);
+    document.getElementById('statOldSize').textContent=fmtSize(s.totalOld);
+    document.getElementById('statNewSize').textContent=fmtSize(s.totalNew);
+    const pct=s.totalOld>0?Math.round((s.totalNew/s.totalOld)*100):0;
+    document.getElementById('statBarNew').style.width=pct+'%';
+  } catch {}
+}
 let reportsOffset=0; const REPORTS_LIMIT=10; let reportsHasMore=true;
-async function loadReports() { reportsOffset=0; reportsHasMore=true; document.getElementById('reportsContainer').innerHTML=''; await loadMoreReports(); }
+async function loadReports() { reportsOffset=0; reportsHasMore=true; document.getElementById('reportsContainer').innerHTML=''; loadReportStats(); await loadMoreReports(); }
 async function loadMoreReports() {
   try {
     const res=await fetch(`/api/reports?offset=${reportsOffset}&limit=${REPORTS_LIMIT}`); const d=await res.json(); const reports=d.reports||[];
@@ -956,7 +1217,7 @@ async function loadVersion() {
 
 // --- Init ---
 initScheduleSelects();
-loadStatus(); loadDirectories(); loadSchedule(); loadSmtp(); loadPreset(); loadRecipients(); loadReports(); loadBackups(); loadVersion();
+loadStatus(); loadDirectories(); loadSchedule(); loadSmtp(); loadPresets(); loadRecipients(); loadReports(); loadBackups(); loadVersion(); loadAppSettings();
 setInterval(()=>{ loadStatus(); if(isConvertRunning) loadProgress(); }, 3000);
 </script>
 </body>

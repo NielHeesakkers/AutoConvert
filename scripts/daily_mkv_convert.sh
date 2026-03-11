@@ -1,7 +1,7 @@
 #!/bin/bash
 # Daily MKV to MP4 converter
 # Scans media directories for MKV files
-# Converts to MP4 using HandBrake with the "Niel" preset
+# Converts to MP4 using HandBrake with the configured preset
 # Sends HTML email report with TMDB posters via msmtp
 # Writes progress JSON to /tmp/mkv_convert_progress.json for web UI
 
@@ -12,9 +12,14 @@ PRESET_FILE="${PRESET_FILE:-$APP_DIR/scripts/Niel.json}"
 LOGFILE="${LOG_DIR:-$APP_DIR/logs}/daily_convert.log"
 REPORT_DIR="/tmp/mkv_convert_report"
 export REPORTS_DIR="${REPORTS_DIR:-${LOG_DIR:-$APP_DIR/logs}/reports}"
-MEDIA_MOVIES="${MEDIA_MOVIES:-/media/movies}"
-MEDIA_SERIES="${MEDIA_SERIES:-/media/series}"
-DIRS=("$MEDIA_MOVIES" "$MEDIA_SERIES")
+# Media directories: prefer MEDIA_DIRS (colon-separated), fallback to MEDIA_MOVIES/MEDIA_SERIES
+if [ -n "$MEDIA_DIRS" ]; then
+  IFS=':' read -ra DIRS <<< "$MEDIA_DIRS"
+else
+  MEDIA_MOVIES="${MEDIA_MOVIES:-/media/movies}"
+  MEDIA_SERIES="${MEDIA_SERIES:-/media/series}"
+  DIRS=("$MEDIA_MOVIES" "$MEDIA_SERIES")
+fi
 
 # Progress tracking paths
 PROGRESS_JSON="/tmp/mkv_convert_progress.json"
@@ -86,6 +91,14 @@ export START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%S")
 
 echo "" >> "$LOGFILE"
 echo "=== Daily conversion started: $(date) ===" >> "$LOGFILE"
+
+# ─── Extract preset name from JSON ───
+PRESET_NAME=$(python3 -c "import json; print(json.load(open('$PRESET_FILE'))['PresetList'][0]['PresetName'])" 2>/dev/null)
+if [ -z "$PRESET_NAME" ]; then
+  echo "$(date) - Could not extract preset name from $PRESET_FILE" >> "$LOGFILE"
+  exit 1
+fi
+echo "Using preset: $PRESET_NAME from $PRESET_FILE" >> "$LOGFILE"
 
 # ─── Detect encoder compatibility ───
 # The preset uses vt_h265_10bit (Apple VideoToolbox) and ca_aac (Core Audio)
@@ -252,19 +265,21 @@ with open('$PROGRESS_JSON', 'w') as f:
     # shellcheck disable=SC2086
     HandBrakeCLI \
       --preset-import-file "$PRESET_FILE" \
-      --preset "Niel" \
+      --preset "$PRESET_NAME" \
       -i "$mkv" \
       -o "$mp4" \
       $ENCODER_OVERRIDES \
       </dev/null \
-      2>"$HB_LOG"
+      &>"$HB_LOG"
     RESULT=$?
     CONV_END=$(date +%s)
     DURATION=$(( (CONV_END - CONV_START) / 60 ))
 
     if [ $RESULT -eq 0 ] && [ -f "$mp4" ]; then
       newsize=$(du -h "$mp4" | awk '{print $1}')
-      rm "$mkv"
+      if [ "${DELETE_ORIGINALS:-1}" = "1" ]; then
+        rm "$mkv"
+      fi
       echo "${DIRNAME}|${base}|${filesize}|${newsize}|${DURATION}" >> "$REPORT_DIR/converted.txt"
       echo "    OK" >> "$LOGFILE"
       CONV_STATUS="ok"

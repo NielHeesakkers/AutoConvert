@@ -3,42 +3,87 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
 const cron = require('node-cron');
+const https = require('https');
+const net = require('net');
+const nodemailer = require('nodemailer');
 
-const DOCKER = process.env.DOCKER === 'true';
-const APP_DIR = DOCKER ? '/app' : __dirname;
+// --- Mode & Paths ---
+const APP_MODE = process.env.AUTOCONVERT_APP === 'true';
+const APP_SUPPORT = APP_MODE
+  ? path.join(process.env.HOME, 'Library', 'Application Support', 'AutoConvert')
+  : null;
+const APP_DIR = __dirname;
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(APP_DIR, 'public')));
 
-const CONFIG_PATH = DOCKER
-  ? '/app/config/config.json'
+const CONFIG_PATH = APP_MODE
+  ? path.join(APP_SUPPORT, 'config.json')
   : path.join(__dirname, 'config.json');
 const SCRIPT_PATH = path.join(APP_DIR, 'scripts', 'daily_mkv_convert.sh');
-const LOG_DIR = DOCKER ? '/app/logs' : path.join(__dirname);
+const LOG_DIR = APP_MODE ? APP_SUPPORT : __dirname;
 const LOG_PATH = path.join(LOG_DIR, 'daily_convert.log');
 const REPORTS_DIR = path.join(LOG_DIR, 'reports');
-const PRESET_DIR = DOCKER ? '/app/config' : path.join(__dirname, 'scripts');
-const PRESET_FILE = path.join(PRESET_DIR, 'Niel.json');
+const PRESETS_DIR = APP_MODE
+  ? path.join(APP_SUPPORT, 'presets')
+  : path.join(__dirname, 'scripts', 'presets');
 const LOCK_FILE = '/tmp/daily_mkv_convert.lock';
 const PROGRESS_FILE = '/tmp/mkv_convert_progress.json';
 const HB_LOG_FILE = '/tmp/mkv_convert_hb.log';
-const MSMTP_BIN = DOCKER ? '/usr/bin/msmtp' : '/opt/homebrew/bin/msmtp';
-const MSMTPRC_PATH = DOCKER ? '/root/.msmtprc' : path.join(process.env.HOME, '.msmtprc');
-const MEDIA_MOVIES = process.env.MEDIA_MOVIES || (DOCKER ? '/media/movies' : '/Volumes/Media/Movies');
-const MEDIA_SERIES = process.env.MEDIA_SERIES || (DOCKER ? '/media/series' : '/Volumes/Media/Series');
-const BACKUP_DIR = DOCKER ? '/backup' : path.join(__dirname, 'backups');
+const MSMTP_BIN = '/opt/homebrew/bin/msmtp';
+const MSMTPRC_PATH = path.join(process.env.HOME, '.msmtprc');
+const DEFAULT_BACKUP_DIR = APP_MODE
+  ? path.join(APP_SUPPORT, 'backups')
+  : path.join(__dirname, 'backups');
+function getBackupDir() {
+  try { const d = readConfig().app?.backupDir; if (d) return d; } catch {}
+  return DEFAULT_BACKUP_DIR;
+}
+function getActivePresetFile() {
+  try { const f = readConfig().app?.activePreset; if (f) return path.join(PRESETS_DIR, f); } catch {}
+  return path.join(PRESETS_DIR, 'Default Preset.json');
+}
+function readPresetDetails(filePath) {
+  const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  const p = (content.PresetList || [])[0] || {};
+  const stat = fs.statSync(filePath);
+  return {
+    name: p.PresetName || 'Unknown',
+    description: p.PresetDescription || '',
+    filename: path.basename(filePath),
+    size: stat.size,
+    modified: stat.mtime,
+    details: {
+      format: p.FileFormat || '', videoEncoder: p.VideoEncoder || '', videoPreset: p.VideoPreset || '',
+      videoQuality: p.VideoQualitySlider ?? '', videoQualityType: p.VideoQualityType ?? '',
+      videoBitrate: p.VideoAvgBitrate ?? '',
+      resolution: (p.PictureWidth && p.PictureHeight) ? `${p.PictureWidth}x${p.PictureHeight}` : '',
+      audioEncoder: p.AudioList?.[0]?.AudioEncoder || '', audioBitrate: p.AudioList?.[0]?.AudioBitrate || '',
+      audioMixdown: p.AudioList?.[0]?.AudioMixdown || '',
+      subtitles: p.SubtitleTrackSelectionBehavior || 'none',
+      chapterMarkers: !!p.ChapterMarkers, multiPass: !!p.VideoMultiPass,
+    }
+  };
+}
 const VERSION_FILE = path.join(APP_DIR, 'version.json');
 
-// macOS-only
-const PLIST_PATH = '/Users/server/Library/LaunchAgents/com.niel.daily-mkv-convert.plist';
+// --- Media Directories ---
+function getMediaDirs() {
+  try {
+    const config = readConfig();
+    if (config.mediaDirs && config.mediaDirs.length > 0) {
+      return config.mediaDirs;
+    }
+  } catch {}
+  return ['/Volumes/Media/Movies', '/Volumes/Media/Series'];
+}
 
-// --- Cron scheduler (Docker mode) ---
+// --- Cron Scheduler ---
 let cronJob = null;
 let scanJob = null;
 
 function setupCron() {
-  if (!DOCKER) return;
   const config = readConfig();
   const hour = config.schedule?.hour ?? 3;
   const minute = config.schedule?.minute ?? 0;
@@ -48,15 +93,12 @@ function setupCron() {
     runConvertScript();
   });
   console.log(`[cron] Scheduled at ${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`);
-
-  // Scan interval cron
   setupScanCron(config);
 }
 
 function setupScanCron(config) {
-  if (!DOCKER) return;
   if (scanJob) scanJob.stop();
-  const interval = config.schedule?.scanInterval || 0; // in minutes, 0 = disabled
+  const interval = config.schedule?.scanInterval || 0;
   if (interval > 0) {
     scanJob = cron.schedule(`*/${interval} * * * *`, () => {
       if (!isRunning()) {
@@ -69,19 +111,22 @@ function setupScanCron(config) {
 }
 
 function runConvertScript() {
+  const mediaDirs = getMediaDirs();
+  const config = readConfig();
+  const autoDelete = config.app?.autoDelete !== false;
   const env = {
     ...process.env,
     APP_DIR,
     CONFIG_FILE: CONFIG_PATH,
-    PRESET_FILE,
+    PRESET_FILE: getActivePresetFile(),
     LOG_DIR,
     REPORTS_DIR,
-    MEDIA_MOVIES,
-    MEDIA_SERIES,
+    MEDIA_DIRS: mediaDirs.join(':'),
+    DELETE_ORIGINALS: autoDelete ? '1' : '0',
     PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
   };
   console.log(`[convert] Starting script: ${SCRIPT_PATH}`);
-  console.log(`[convert] MEDIA_MOVIES=${MEDIA_MOVIES}, MEDIA_SERIES=${MEDIA_SERIES}`);
+  console.log(`[convert] Media dirs: ${mediaDirs.join(', ')}`);
   const logStream = fs.openSync(path.join(LOG_DIR, 'convert_stderr.log'), 'a');
   const child = spawn('/bin/bash', [SCRIPT_PATH], {
     detached: true,
@@ -147,12 +192,26 @@ function isRunning() {
   }
 }
 
-// Ensure directories exist
+// --- Init ---
 try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 try { fs.mkdirSync(REPORTS_DIR, { recursive: true }); } catch {}
-try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); } catch {}
-if (!fs.existsSync(LOG_PATH)) {
-  fs.writeFileSync(LOG_PATH, '');
+try { fs.mkdirSync(getBackupDir(), { recursive: true }); } catch {}
+if (!fs.existsSync(LOG_PATH)) fs.writeFileSync(LOG_PATH, '');
+
+// Init presets directory and migrate
+try { fs.mkdirSync(PRESETS_DIR, { recursive: true }); } catch {}
+const _presetsInDir = (() => { try { return fs.readdirSync(PRESETS_DIR).filter(f => f.endsWith('.json')); } catch { return []; } })();
+if (_presetsInDir.length === 0) {
+  // Migrate old single preset or copy default
+  const oldPreset = path.join(APP_MODE ? APP_SUPPORT : path.join(__dirname, 'scripts'), 'Niel.json');
+  const defaultPreset = path.join(APP_DIR, 'scripts', 'Niel.json');
+  const src = fs.existsSync(oldPreset) ? oldPreset : (fs.existsSync(defaultPreset) ? defaultPreset : null);
+  if (src) {
+    fs.copyFileSync(src, path.join(PRESETS_DIR, 'Default Preset.json'));
+    console.log(`[init] Copied preset to ${PRESETS_DIR}/Default Preset.json`);
+  }
+  const _cfg = readConfig(); if (!_cfg.app) _cfg.app = {};
+  if (!_cfg.app.activePreset) { _cfg.app.activePreset = 'Default Preset.json'; writeConfig(_cfg); }
 }
 
 // Write msmtprc from config on startup
@@ -178,7 +237,6 @@ app.get('/api/status', (req, res) => {
 // Conversion progress
 app.get('/api/convert/progress', (req, res) => {
   if (!isRunning()) {
-    // Check if there's a recent "done" progress file (show results briefly)
     try {
       const progress = JSON.parse(fs.readFileSync(PROGRESS_FILE, 'utf8'));
       if (progress.status === 'done' && progress.finished) {
@@ -203,7 +261,7 @@ app.get('/api/convert/progress', (req, res) => {
     const tail = buf.toString('utf8', 0, bytesRead);
     const parts = tail.split(/[\r\n]/);
     for (let i = parts.length - 1; i >= 0; i--) {
-      const match = parts[i].match(/Encoding:.*?(\d+\.\d+)\s*%/);
+      const match = parts[i].match(/Encoding:.*?(\d+(?:\.\d+)?)\s*%/);
       if (match) {
         progress.hb_progress = parseFloat(match[1]);
         const etaMatch = parts[i].match(/ETA\s+(\d+h\d+m\d+s)/);
@@ -216,7 +274,6 @@ app.get('/api/convert/progress', (req, res) => {
   res.json(progress);
 });
 
-// Clear progress (after done summary shown)
 app.post('/api/convert/progress/clear', (req, res) => {
   try { fs.unlinkSync(PROGRESS_FILE); } catch {}
   res.json({ ok: true });
@@ -245,7 +302,6 @@ app.post('/api/recipients', (req, res) => {
   res.json({ ok: true, recipients });
 });
 
-// Toggle recipient active/inactive
 app.post('/api/recipients/toggle', (req, res) => {
   const { email } = req.body;
   const config = readConfig();
@@ -296,70 +352,67 @@ app.post('/api/smtp', (req, res) => {
 });
 
 // Send test email
-app.post('/api/test-email', (req, res) => {
+app.post('/api/test-email', async (req, res) => {
   const { email } = req.body;
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!email || !emailRegex.test(email)) {
     return res.status(400).json({ error: 'Invalid email address' });
   }
   const config = readConfig();
-  const from = (config.smtp && config.smtp.from) || 'noreply@autoconvert.local';
+  const smtp = config.smtp;
+  if (!smtp || !smtp.host) {
+    return res.status(400).json({ error: 'SMTP not configured' });
+  }
+  const from = smtp.from || 'noreply@autoconvert.local';
   const now = new Date().toLocaleString('en-US', { timeZone: 'Europe/Amsterdam' });
-  const mailContent = [
-    'Content-Type: text/html; charset=utf-8',
-    `Subject: AutoConvert Test - ${now}`,
-    `From: ${from}`,
-    `To: ${email}`,
-    '',
-    '<html><body style="font-family:-apple-system,Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px;">',
-    '<div style="background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">',
-    '<h2 style="color:#6366f1;margin:0 0 10px;">AutoConvert Test</h2>',
-    `<p>This is a test email sent on <strong>${now}</strong>.</p>`,
-    '<p style="color:#888;">If you receive this email, the email configuration is working correctly.</p>',
-    '</div></body></html>',
-  ].join('\n');
+  try {
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port || 587,
+      secure: smtp.tls && !smtp.starttls,
+      auth: { user: smtp.user, pass: smtp.password },
+      tls: { rejectUnauthorized: false }
+    });
+    await transporter.sendMail({
+      from,
+      to: email,
+      subject: `AutoConvert Test - ${now}`,
+      html: '<html><body style="font-family:-apple-system,Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px;">'
+        + '<div style="background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">'
+        + '<h2 style="color:#6366f1;margin:0 0 10px;">AutoConvert Test</h2>'
+        + `<p>This is a test email sent on <strong>${now}</strong>.</p>`
+        + '<p style="color:#888;">If you receive this email, the email configuration is working correctly.</p>'
+        + '</div></body></html>'
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  const child = spawn(MSMTP_BIN, [email], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
-  let stderr = '';
-  child.stderr.on('data', d => { stderr += d; });
-  child.stdin.write(mailContent);
-  child.stdin.end();
-  child.on('close', code => {
-    if (code === 0) {
-      res.json({ ok: true });
-    } else {
-      res.status(500).json({ error: stderr.trim() || 'msmtp error' });
-    }
-  });
+// Test SMTP connection
+app.post('/api/test-smtp', (req, res) => {
+  const config = readConfig();
+  const smtp = config.smtp;
+  if (!smtp || !smtp.host || !smtp.port) {
+    return res.status(400).json({ error: 'SMTP not configured' });
+  }
+  const socket = new net.Socket();
+  socket.setTimeout(5000);
+  socket.on('connect', () => { socket.destroy(); res.json({ ok: true }); });
+  socket.on('timeout', () => { socket.destroy(); res.status(500).json({ error: 'Connection timed out' }); });
+  socket.on('error', (err) => { res.status(500).json({ error: err.message }); });
+  socket.connect(smtp.port, smtp.host);
 });
 
 // Schedule
 app.get('/api/schedule', (req, res) => {
-  if (DOCKER) {
-    const config = readConfig();
-    res.json({
-      hour: config.schedule?.hour ?? 3,
-      minute: config.schedule?.minute ?? 0,
-      scanInterval: config.schedule?.scanInterval ?? 0,
-    });
-  } else {
-    try {
-      const plist = require('plist');
-      const xml = fs.readFileSync(PLIST_PATH, 'utf8');
-      const parsed = plist.parse(xml);
-      const interval = parsed.StartCalendarInterval || {};
-      const config = readConfig();
-      res.json({
-        hour: interval.Hour || 0,
-        minute: interval.Minute || 0,
-        scanInterval: config.schedule?.scanInterval ?? 0,
-      });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  }
+  const config = readConfig();
+  res.json({
+    hour: config.schedule?.hour ?? 3,
+    minute: config.schedule?.minute ?? 0,
+    scanInterval: config.schedule?.scanInterval ?? 0,
+  });
 });
 
 app.post('/api/schedule', (req, res) => {
@@ -370,31 +423,18 @@ app.post('/api/schedule', (req, res) => {
   if (isNaN(h) || h < 0 || h > 23 || isNaN(m) || m < 0 || m > 59) {
     return res.status(400).json({ error: 'Invalid time' });
   }
-  if (DOCKER) {
-    const config = readConfig();
-    config.schedule = { hour: h, minute: m, scanInterval: si };
-    writeConfig(config);
-    setupCron();
-    res.json({ ok: true, hour: h, minute: m, scanInterval: si });
-  } else {
-    try {
-      const plist = require('plist');
-      const xml = fs.readFileSync(PLIST_PATH, 'utf8');
-      const parsed = plist.parse(xml);
-      parsed.StartCalendarInterval = { Hour: h, Minute: m };
-      fs.writeFileSync(PLIST_PATH, plist.build(parsed));
-      try { execSync(`launchctl unload "${PLIST_PATH}" 2>/dev/null`); } catch {}
-      execSync(`launchctl load "${PLIST_PATH}"`);
-      // Save scan interval in config
-      const config = readConfig();
-      if (!config.schedule) config.schedule = {};
-      config.schedule.scanInterval = si;
-      writeConfig(config);
-      res.json({ ok: true, hour: h, minute: m, scanInterval: si });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  }
+  const config = readConfig();
+  config.schedule = { hour: h, minute: m, scanInterval: si };
+  writeConfig(config);
+  setupCron();
+  res.json({ ok: true, hour: h, minute: m, scanInterval: si });
+});
+
+// Manual scan
+app.post('/api/scan', (req, res) => {
+  dirCache = null;
+  scanDirectories();
+  res.json({ ok: true });
 });
 
 // Force convert
@@ -426,31 +466,51 @@ app.post('/api/convert/stop', (req, res) => {
   }
 });
 
-// Reports (JSON)
+// Reports
+// Parse human-readable size strings (e.g. "4.5G", "120M", "500K") to bytes
+function parseSizeToBytes(s) {
+  if (!s || typeof s !== 'string') return 0;
+  const m = s.trim().match(/^([\d.]+)\s*([KMGT]?)i?B?$/i);
+  if (!m) return 0;
+  const v = parseFloat(m[1]);
+  const u = (m[2] || '').toUpperCase();
+  const mult = { '': 1, 'K': 1024, 'M': 1024 ** 2, 'G': 1024 ** 3, 'T': 1024 ** 4 };
+  return v * (mult[u] || 1);
+}
+
+app.get('/api/reports/stats', (req, res) => {
+  try {
+    let files = [];
+    try { files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.json')); } catch {}
+    let movies = 0, series = 0, totalOld = 0, totalNew = 0;
+    for (const f of files) {
+      try {
+        const r = JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, f), 'utf8'));
+        for (const c of (r.converted || [])) {
+          if (c.section === 'movies') movies++; else series++;
+          totalOld += parseSizeToBytes(c.old_size);
+          totalNew += parseSizeToBytes(c.new_size);
+        }
+      } catch {}
+    }
+    res.json({ movies, series, totalOld, totalNew, saved: totalOld - totalNew, reports: files.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/reports', (req, res) => {
   try {
     let files = [];
     try {
-      files = fs.readdirSync(REPORTS_DIR)
-        .filter(f => f.endsWith('.json'))
-        .sort()
-        .reverse();
+      files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.json')).sort().reverse();
     } catch {}
-
     const total = files.length;
     const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
     const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
     const page = files.slice(offset, offset + limit);
-
     const reports = page.map(f => {
-      try {
-        const content = fs.readFileSync(path.join(REPORTS_DIR, f), 'utf8');
-        return { filename: f, ...JSON.parse(content) };
-      } catch {
-        return { filename: f, error: 'Could not read report' };
-      }
+      try { return { filename: f, ...JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, f), 'utf8')) }; }
+      catch { return { filename: f, error: 'Could not read report' }; }
     });
-
     res.json({ total, offset, limit, reports });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -463,26 +523,17 @@ app.delete('/api/reports/:filename', (req, res) => {
     return res.status(400).json({ error: 'Invalid filename' });
   }
   const filepath = path.join(REPORTS_DIR, filename);
-  if (!fs.existsSync(filepath)) {
-    return res.status(404).json({ error: 'Report not found' });
-  }
-  try {
-    fs.unlinkSync(filepath);
-    res.json({ ok: true, deleted: filename });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Report not found' });
+  try { fs.unlinkSync(filepath); res.json({ ok: true, deleted: filename }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Clear all reports + log
 app.delete('/api/logs', (req, res) => {
   try {
     fs.writeFileSync(LOG_PATH, '');
     try {
       const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.json'));
-      for (const f of files) {
-        fs.unlinkSync(path.join(REPORTS_DIR, f));
-      }
+      for (const f of files) fs.unlinkSync(path.join(REPORTS_DIR, f));
     } catch {}
     res.json({ ok: true });
   } catch (err) {
@@ -490,9 +541,8 @@ app.delete('/api/logs', (req, res) => {
   }
 });
 
-// Directories (async with background cache for slow network volumes)
+// --- Directories (async scan with cache) ---
 const fsPromises = fs.promises;
-
 let dirCache = null;
 let dirScanRunning = false;
 
@@ -520,7 +570,7 @@ async function findMkvAsync(dir, rel) {
 async function scanDirectories() {
   if (dirScanRunning) return;
   dirScanRunning = true;
-  const basePaths = [MEDIA_MOVIES, MEDIA_SERIES];
+  const basePaths = getMediaDirs();
   try {
     const directories = await Promise.all(basePaths.map(async (dirPath) => {
       let exists = false;
@@ -540,101 +590,128 @@ async function scanDirectories() {
   dirScanRunning = false;
 }
 
-// Start initial scan on startup
 scanDirectories();
 
 app.get('/api/directories', (req, res) => {
   if (dirCache) {
     res.json(dirCache);
   } else {
-    // Return empty while scanning
+    const dirs = getMediaDirs();
     res.json({
-      directories: [
-        { path: MEDIA_MOVIES, name: path.basename(MEDIA_MOVIES), exists: true, fileCount: 0, files: [], scanning: true },
-        { path: MEDIA_SERIES, name: path.basename(MEDIA_SERIES), exists: true, fileCount: 0, files: [], scanning: true },
-      ],
+      directories: dirs.map(d => ({ path: d, name: path.basename(d), exists: true, fileCount: 0, files: [], scanning: true })),
       scanning: true,
     });
   }
-  // Trigger background rescan if cache is older than 5 minutes
-  if (!dirCache || Date.now() - dirCache.scannedAt > 300000) {
-    scanDirectories();
-  }
+  if (!dirCache || Date.now() - dirCache.scannedAt > 300000) scanDirectories();
 });
 
-// Debug: check mount and file sizes
-app.get('/api/debug/mount', (req, res) => {
+// --- Debug ---
+app.get('/api/debug/hblog', (req, res) => {
   const results = {};
-  try { results.mount = execSync('mount | grep media 2>&1 || echo "no media mounts"', { timeout: 5000 }).toString().trim(); } catch (e) { results.mount = e.message; }
-  try { results.df = execSync('df -h /media/movies /media/series 2>&1', { timeout: 5000 }).toString().trim(); } catch (e) { results.df = e.message; }
-  try { results.findMkv = execSync('find /media/movies /media/series -name "*.mkv" -maxdepth 3 2>/dev/null | head -3', { timeout: 10000 }).toString().trim(); } catch (e) { results.findMkv = e.message; }
-  try { results.mkvSizes = execSync("find /media/movies /media/series -name '*.mkv' -maxdepth 3 -exec ls -lh {} \\; 2>/dev/null | head -5", { timeout: 10000 }).toString().trim(); } catch (e) { results.mkvSizes = e.message; }
+  try { results.hbLog = fs.readFileSync(HB_LOG_FILE, 'utf8').slice(-4000); } catch (e) { results.hbLog = e.message; }
+  try { results.stderr = fs.readFileSync(path.join(LOG_DIR, 'convert_stderr.log'), 'utf8').slice(-2000); } catch (e) { results.stderr = e.message; }
+  try { results.lockfile = fs.readFileSync(LOCK_FILE, 'utf8').trim(); } catch (e) { results.lockfile = e.message; }
+  try { results.ps = execSync('ps aux | grep -i handbrake | grep -v grep', { timeout: 5000 }).toString().trim(); } catch (e) { results.ps = 'no handbrake process'; }
   res.json(results);
 });
 
-// Preset info
-app.get('/api/preset', (req, res) => {
+app.get('/api/debug/paths', (req, res) => {
+  res.json({
+    APP_DIR, APP_MODE, __dirname,
+    cwd: process.cwd(),
+    publicDir: path.join(APP_DIR, 'public'),
+    publicExists: fs.existsSync(path.join(APP_DIR, 'public')),
+    indexExists: fs.existsSync(path.join(APP_DIR, 'public', 'index.html')),
+    CONFIG_PATH, PRESETS_DIR, activePreset: getActivePresetFile(), LOG_DIR,
+  });
+});
+
+// --- Presets ---
+app.get('/api/presets', (req, res) => {
   try {
-    const content = JSON.parse(fs.readFileSync(PRESET_FILE, 'utf8'));
-    const presets = content.PresetList || [];
-    const name = presets[0]?.PresetName || 'Unknown';
-    const desc = presets[0]?.PresetDescription || '';
-    const stat = fs.statSync(PRESET_FILE);
-    res.json({
-      name,
-      description: desc,
-      filename: path.basename(PRESET_FILE),
-      size: stat.size,
-      modified: stat.mtime,
+    const config = readConfig();
+    const activeFilename = config.app?.activePreset || 'Default Preset.json';
+    const files = fs.readdirSync(PRESETS_DIR).filter(f => f.endsWith('.json')).sort();
+    const presets = files.map(f => {
+      try {
+        const info = readPresetDetails(path.join(PRESETS_DIR, f));
+        info.active = (f === activeFilename);
+        return info;
+      } catch (err) {
+        return { filename: f, name: f, error: err.message, active: (f === activeFilename) };
+      }
     });
+    res.json({ presets, activePreset: activeFilename });
   } catch (err) {
-    res.json({ name: 'No preset', filename: '', error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Upload preset
-app.post('/api/preset', express.raw({ type: 'application/json', limit: '5mb' }), (req, res) => {
+app.post('/api/presets', (req, res) => {
   try {
-    const content = JSON.parse(req.body.toString());
-    if (!content.PresetList || !Array.isArray(content.PresetList)) {
+    const content = req.body;
+    if (!content.PresetList || !Array.isArray(content.PresetList) || !content.PresetList.length) {
       return res.status(400).json({ error: 'Invalid HandBrake preset file (no PresetList found)' });
     }
     const presetName = content.PresetList[0]?.PresetName || 'Unknown';
-    if (fs.existsSync(PRESET_FILE)) {
-      fs.copyFileSync(PRESET_FILE, PRESET_FILE + '.bak');
+    let filename = presetName.replace(/[^a-zA-Z0-9 _\-]/g, '').trim() + '.json';
+    if (!filename || filename === '.json') filename = 'preset.json';
+    const filePath = path.join(PRESETS_DIR, filename);
+    if (fs.existsSync(filePath) && req.query.overwrite !== 'true') {
+      return res.status(409).json({ error: 'Preset already exists', filename, exists: true });
     }
-    fs.writeFileSync(PRESET_FILE, JSON.stringify(content, null, 2));
-    res.json({ ok: true, name: presetName });
+    fs.writeFileSync(filePath, JSON.stringify(content, null, 2));
+    const config = readConfig();
+    if (!config.app) config.app = {};
+    const allPresets = fs.readdirSync(PRESETS_DIR).filter(f => f.endsWith('.json'));
+    if (allPresets.length === 1 || !config.app.activePreset) {
+      config.app.activePreset = filename;
+      writeConfig(config);
+    }
+    res.json({ ok: true, name: presetName, filename });
   } catch (err) {
     res.status(400).json({ error: 'Invalid JSON file: ' + err.message });
   }
 });
 
-// Download current preset
-app.get('/api/preset/download', (req, res) => {
-  if (!fs.existsSync(PRESET_FILE)) {
-    return res.status(404).json({ error: 'No preset available' });
+app.post('/api/presets/:filename/activate', (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(PRESETS_DIR, filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Preset not found' });
+  const config = readConfig();
+  if (!config.app) config.app = {};
+  config.app.activePreset = filename;
+  writeConfig(config);
+  res.json({ ok: true, activePreset: filename });
+});
+
+app.delete('/api/presets/:filename', (req, res) => {
+  const { filename } = req.params;
+  const config = readConfig();
+  if (filename === (config.app?.activePreset || 'Default Preset.json')) {
+    return res.status(400).json({ error: 'Cannot delete the active preset' });
   }
-  res.download(PRESET_FILE, 'Niel.json');
+  const filePath = path.join(PRESETS_DIR, filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Preset not found' });
+  try { fs.unlinkSync(filePath); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/presets/:filename/download', (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(PRESETS_DIR, filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Preset not found' });
+  res.download(filePath, filename);
 });
 
 // --- Backup ---
 app.get('/api/backups', (req, res) => {
   try {
     let files = [];
-    try {
-      files = fs.readdirSync(BACKUP_DIR)
-        .filter(f => f.endsWith('.json'))
-        .sort()
-        .reverse();
-    } catch {}
+    try { files = fs.readdirSync(getBackupDir()).filter(f => f.endsWith('.json')).sort().reverse(); } catch {}
     const backups = files.map(f => {
-      try {
-        const stat = fs.statSync(path.join(BACKUP_DIR, f));
-        return { filename: f, size: stat.size, created: stat.mtime };
-      } catch {
-        return { filename: f };
-      }
+      try { const stat = fs.statSync(path.join(getBackupDir(), f)); return { filename: f, size: stat.size, created: stat.mtime }; }
+      catch { return { filename: f }; }
     });
     res.json({ backups });
   } catch (err) {
@@ -647,33 +724,21 @@ app.post('/api/backups', (req, res) => {
     const now = new Date();
     const ts = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const filename = `backup_${ts}.json`;
-
-    // Gather data
-    let config = {};
-    try { config = readConfig(); } catch {}
-
-    let preset = null;
-    try { preset = JSON.parse(fs.readFileSync(PRESET_FILE, 'utf8')); } catch {}
-
+    let config = {}; try { config = readConfig(); } catch {}
+    let presets = {};
+    try {
+      const pfiles = fs.readdirSync(PRESETS_DIR).filter(f => f.endsWith('.json'));
+      for (const f of pfiles) { try { presets[f] = JSON.parse(fs.readFileSync(path.join(PRESETS_DIR, f), 'utf8')); } catch {} }
+    } catch {}
     let reports = [];
     try {
       const reportFiles = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.json')).sort();
       for (const f of reportFiles) {
-        try {
-          reports.push({ filename: f, ...JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, f), 'utf8')) });
-        } catch {}
+        try { reports.push({ filename: f, ...JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, f), 'utf8')) }); } catch {}
       }
     } catch {}
-
-    const backup = {
-      created: now.toISOString(),
-      version: '1.0',
-      config,
-      preset,
-      reports,
-    };
-
-    fs.writeFileSync(path.join(BACKUP_DIR, filename), JSON.stringify(backup, null, 2));
+    const backup = { created: now.toISOString(), version: '2.0', config, presets, reports };
+    fs.writeFileSync(path.join(getBackupDir(), filename), JSON.stringify(backup, null, 2));
     res.json({ ok: true, filename, size: JSON.stringify(backup).length });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -682,41 +747,57 @@ app.post('/api/backups', (req, res) => {
 
 app.delete('/api/backups/:filename', (req, res) => {
   const { filename } = req.params;
-  if (!/^backup_[\w-]+\.json$/.test(filename)) {
-    return res.status(400).json({ error: 'Invalid filename' });
-  }
-  const filepath = path.join(BACKUP_DIR, filename);
-  if (!fs.existsSync(filepath)) {
-    return res.status(404).json({ error: 'Backup not found' });
-  }
+  if (!/^backup_[\w-]+\.json$/.test(filename)) return res.status(400).json({ error: 'Invalid filename' });
+  const filepath = path.join(getBackupDir(), filename);
+  if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Backup not found' });
+  try { fs.unlinkSync(filepath); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/choose-directory', (req, res) => {
+  const def = req.body.default || '';
+  const choose = def
+    ? `POSIX path of (choose folder with prompt "Select folder" default location POSIX file "${def}")`
+    : `POSIX path of (choose folder with prompt "Select folder")`;
+  const script = `tell application "System Events" to activate\n${choose}`;
   try {
-    fs.unlinkSync(filepath);
-    res.json({ ok: true });
+    const result = execSync(`osascript -e 'tell application "System Events" to activate' -e '${choose}'`, { timeout: 60000 }).toString().trim();
+    res.json({ ok: true, path: result });
   } catch (err) {
+    if (err.status === 1 || err.stderr?.toString().includes('User canceled')) return res.json({ ok: false, canceled: true });
     res.status(500).json({ error: err.message });
   }
+});
+
+app.post('/api/backups/reveal', (req, res) => {
+  const { filename } = req.body;
+  const target = filename ? path.join(getBackupDir(), filename) : getBackupDir();
+  if (filename && !fs.existsSync(target)) return res.status(404).json({ error: 'File not found' });
+  try { execSync(`open -R "${target}"`); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/backups/restore', (req, res) => {
   const { filename } = req.body;
   if (!filename) return res.status(400).json({ error: 'No file specified' });
-  const filepath = path.join(BACKUP_DIR, filename);
-  if (!fs.existsSync(filepath)) {
-    return res.status(404).json({ error: 'Backup not found' });
-  }
+  const filepath = path.join(getBackupDir(), filename);
+  if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Backup not found' });
   try {
     const backup = JSON.parse(fs.readFileSync(filepath, 'utf8'));
-    // Restore config
     if (backup.config) {
       writeConfig(backup.config);
       if (backup.config.smtp) writeMsmtprc(backup.config.smtp);
-      if (DOCKER) setupCron();
+      setupCron();
     }
-    // Restore preset
-    if (backup.preset) {
-      fs.writeFileSync(PRESET_FILE, JSON.stringify(backup.preset, null, 2));
+    if (backup.presets && typeof backup.presets === 'object') {
+      for (const [fn, content] of Object.entries(backup.presets)) {
+        fs.writeFileSync(path.join(PRESETS_DIR, fn), JSON.stringify(content, null, 2));
+      }
+    } else if (backup.preset) {
+      const pname = backup.preset.PresetList?.[0]?.PresetName || 'Default Preset';
+      const fn = pname.replace(/[^a-zA-Z0-9 _\-]/g, '').trim() + '.json';
+      fs.writeFileSync(path.join(PRESETS_DIR, fn), JSON.stringify(backup.preset, null, 2));
     }
-    // Restore reports
     if (backup.reports && Array.isArray(backup.reports)) {
       for (const r of backup.reports) {
         if (r.filename) {
@@ -734,17 +815,13 @@ app.post('/api/backups/restore', (req, res) => {
 // --- Export / Import ---
 app.get('/api/export', (req, res) => {
   try {
-    let config = {};
-    try { config = readConfig(); } catch {}
-    let preset = null;
-    try { preset = JSON.parse(fs.readFileSync(PRESET_FILE, 'utf8')); } catch {}
-
-    const data = {
-      exported: new Date().toISOString(),
-      type: 'autoconvert-export',
-      config,
-      preset,
-    };
+    let config = {}; try { config = readConfig(); } catch {}
+    let presets = {};
+    try {
+      const pfiles = fs.readdirSync(PRESETS_DIR).filter(f => f.endsWith('.json'));
+      for (const f of pfiles) { try { presets[f] = JSON.parse(fs.readFileSync(path.join(PRESETS_DIR, f), 'utf8')); } catch {} }
+    } catch {}
+    const data = { exported: new Date().toISOString(), type: 'autoconvert-export', config, presets };
     res.setHeader('Content-Disposition', 'attachment; filename="autoconvert-export.json"');
     res.json(data);
   } catch (err) {
@@ -755,19 +832,20 @@ app.get('/api/export', (req, res) => {
 app.post('/api/import', (req, res) => {
   try {
     const data = req.body;
-    if (data.type !== 'autoconvert-export') {
-      return res.status(400).json({ error: 'Invalid export file' });
-    }
+    if (data.type !== 'autoconvert-export') return res.status(400).json({ error: 'Invalid export file' });
     if (data.config) {
       writeConfig(data.config);
       if (data.config.smtp) writeMsmtprc(data.config.smtp);
-      if (DOCKER) setupCron();
+      setupCron();
     }
-    if (data.preset) {
-      if (fs.existsSync(PRESET_FILE)) {
-        fs.copyFileSync(PRESET_FILE, PRESET_FILE + '.bak');
+    if (data.presets && typeof data.presets === 'object') {
+      for (const [fn, content] of Object.entries(data.presets)) {
+        fs.writeFileSync(path.join(PRESETS_DIR, fn), JSON.stringify(content, null, 2));
       }
-      fs.writeFileSync(PRESET_FILE, JSON.stringify(data.preset, null, 2));
+    } else if (data.preset) {
+      const pname = data.preset.PresetList?.[0]?.PresetName || 'Default Preset';
+      const fn = pname.replace(/[^a-zA-Z0-9 _\-]/g, '').trim() + '.json';
+      fs.writeFileSync(path.join(PRESETS_DIR, fn), JSON.stringify(data.preset, null, 2));
     }
     res.json({ ok: true });
   } catch (err) {
@@ -793,15 +871,13 @@ function parseTitleYear(filename) {
   return { title: filename, year: null, type: 'movie', season: null, episode: null };
 }
 
-const https = require('https');
-
 async function tmdbRequest(apiPath, params = {}) {
   params.api_key = TMDB_API_KEY;
   const qs = new URLSearchParams(params).toString();
   const url = `https://api.themoviedb.org/3${apiPath}?${qs}`;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { req.destroy(); reject(new Error('TMDB timeout')); }, 8000);
-    const req = https.get(url, { headers: { 'User-Agent': 'MKV-Converter/1.0' } }, res => {
+    const req = https.get(url, { headers: { 'User-Agent': 'AutoConvert/1.0' } }, res => {
       let data = '';
       res.on('data', c => { data += c; });
       res.on('end', () => {
@@ -823,10 +899,8 @@ async function fetchTmdb(parsed) {
       if (data.results && data.results.length) {
         const r = data.results[0];
         return {
-          title: r.title || title,
-          year: (r.release_date || '').slice(0, 4),
-          rating: r.vote_average || 0,
-          overview: (r.overview || '').slice(0, 150),
+          title: r.title || title, year: (r.release_date || '').slice(0, 4),
+          rating: r.vote_average || 0, overview: (r.overview || '').slice(0, 150),
           poster: r.poster_path ? `${TMDB_IMG_BASE}${r.poster_path}` : null,
         };
       }
@@ -840,10 +914,8 @@ async function fetchTmdb(parsed) {
             const ep = await tmdbRequest(`/tv/${series.id}/season/${season}/episode/${episode}`);
             const still = ep.still_path ? `${TMDB_IMG_BASE}${ep.still_path}` : null;
             return {
-              title: series.name || title,
-              year: (series.first_air_date || '').slice(0, 4),
-              rating: ep.vote_average || 0,
-              overview: (ep.overview || '').slice(0, 150),
+              title: series.name || title, year: (series.first_air_date || '').slice(0, 4),
+              rating: ep.vote_average || 0, overview: (ep.overview || '').slice(0, 150),
               poster: still || seriesPoster,
               ep_label: `S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}`,
               ep_name: ep.name || '',
@@ -851,10 +923,8 @@ async function fetchTmdb(parsed) {
           } catch {}
         }
         return {
-          title: series.name || title,
-          year: (series.first_air_date || '').slice(0, 4),
-          rating: series.vote_average || 0,
-          overview: (series.overview || '').slice(0, 150),
+          title: series.name || title, year: (series.first_air_date || '').slice(0, 4),
+          rating: series.vote_average || 0, overview: (series.overview || '').slice(0, 150),
           poster: seriesPoster,
           ep_label: (season != null && episode != null) ? `S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}` : '',
         };
@@ -886,9 +956,7 @@ app.post('/api/tmdb/lookup', async (req, res) => {
 app.get('/api/handbrake/encoders', (req, res) => {
   try {
     const output = execSync('HandBrakeCLI --help 2>&1', { timeout: 10000 }).toString();
-    const video = [];
-    const audio = [];
-    // Parse video encoders: lines with only an encoder name after "--encoder <string>"
+    const video = [], audio = [];
     const vSection = output.match(/--encoder <string>[\s\S]*?(?=\s+--encoder-preset)/);
     if (vSection) {
       for (const line of vSection[0].split('\n').slice(1)) {
@@ -896,7 +964,6 @@ app.get('/api/handbrake/encoders', (req, res) => {
         if (trimmed && /^[a-zA-Z0-9_]+$/.test(trimmed)) video.push(trimmed);
       }
     }
-    // Parse audio encoders: lines with only an encoder name after "--aencoder <string>"
     const aSection = output.match(/--aencoder <string>[\s\S]*?(?=\s+--audio-copy-mask)/);
     if (aSection) {
       for (const line of aSection[0].split('\n').slice(1)) {
@@ -904,39 +971,97 @@ app.get('/api/handbrake/encoders', (req, res) => {
         if (/^[a-zA-Z0-9_]+$/.test(trimmed) && trimmed !== 'none') audio.push(trimmed);
       }
     }
-    // Read preset to show what's configured
     let presetEncoder = '', presetAudio = '';
     try {
-      const preset = JSON.parse(fs.readFileSync(PRESET_FILE, 'utf8'));
+      const preset = JSON.parse(fs.readFileSync(getActivePresetFile(), 'utf8'));
       presetEncoder = preset.PresetList?.[0]?.VideoEncoder || '';
       presetAudio = preset.PresetList?.[0]?.AudioList?.[0]?.AudioEncoder || '';
     } catch {}
-    res.json({
-      video,
-      audio,
-      presetEncoder,
-      presetAudio,
-      presetEncoderAvailable: video.includes(presetEncoder),
-      presetAudioAvailable: audio.includes(presetAudio),
-    });
+    res.json({ video, audio, presetEncoder, presetAudio, presetEncoderAvailable: video.includes(presetEncoder), presetAudioAvailable: audio.includes(presetAudio) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// --- App Settings ---
+app.get('/api/app-settings', (req, res) => {
+  const config = readConfig();
+  res.json({
+    port: config.app?.port || 3742,
+    backupDir: config.app?.backupDir || DEFAULT_BACKUP_DIR,
+    autoDelete: config.app?.autoDelete !== false,
+  });
+});
+
+app.post('/api/app-settings', (req, res) => {
+  const { port, backupDir, autoDelete } = req.body;
+  const config = readConfig();
+  if (!config.app) config.app = {};
+  let restart = false;
+  if (port !== undefined) {
+    const p = parseInt(port, 10);
+    if (isNaN(p) || p < 1 || p > 65535) return res.status(400).json({ error: 'Port must be between 1 and 65535' });
+    config.app.port = p;
+    restart = true;
+  }
+  if (backupDir !== undefined) {
+    const d = backupDir.trim();
+    if (d) {
+      try { fs.mkdirSync(d, { recursive: true }); } catch (e) { return res.status(400).json({ error: 'Cannot create directory: ' + e.message }); }
+      config.app.backupDir = d;
+    } else {
+      delete config.app.backupDir;
+    }
+  }
+  if (autoDelete !== undefined) {
+    config.app.autoDelete = !!autoDelete;
+  }
+  writeConfig(config);
+  res.json({ ok: true, restart });
+});
+
+// --- Media Directories ---
+app.get('/api/media-dirs', (req, res) => {
+  res.json({ dirs: getMediaDirs() });
+});
+
+app.post('/api/media-dirs', (req, res) => {
+  const { dir } = req.body;
+  if (!dir || typeof dir !== 'string' || !dir.trim()) return res.status(400).json({ error: 'Directory path is required' });
+  const cleaned = dir.trim().replace(/\/+$/, '');
+  const config = readConfig();
+  if (!config.mediaDirs) config.mediaDirs = getMediaDirs();
+  if (config.mediaDirs.includes(cleaned)) return res.status(409).json({ error: 'Directory already exists' });
+  config.mediaDirs.push(cleaned);
+  writeConfig(config);
+  dirCache = null;
+  scanDirectories();
+  res.json({ ok: true, dirs: config.mediaDirs });
+});
+
+app.delete('/api/media-dirs', (req, res) => {
+  const { dir } = req.body;
+  if (!dir) return res.status(400).json({ error: 'Directory path is required' });
+  const config = readConfig();
+  if (!config.mediaDirs) config.mediaDirs = getMediaDirs();
+  const idx = config.mediaDirs.indexOf(dir);
+  if (idx === -1) return res.status(404).json({ error: 'Directory not found' });
+  config.mediaDirs.splice(idx, 1);
+  writeConfig(config);
+  dirCache = null;
+  scanDirectories();
+  res.json({ ok: true, dirs: config.mediaDirs });
+});
+
 // --- Version ---
 app.get('/api/version', (req, res) => {
-  try {
-    const data = JSON.parse(fs.readFileSync(VERSION_FILE, 'utf8'));
-    res.json(data);
-  } catch {
-    res.json({ version: '1.0', history: [] });
-  }
+  try { res.json(JSON.parse(fs.readFileSync(VERSION_FILE, 'utf8'))); }
+  catch { res.json({ version: '1.0', history: [] }); }
 });
 
 // --- Start ---
-const PORT = process.env.PORT || 3742;
+const PORT = process.env.PORT || readConfig().app?.port || 3742;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`AutoConvert running on http://localhost:${PORT}`);
-  if (DOCKER) setupCron();
+  setupCron();
 });

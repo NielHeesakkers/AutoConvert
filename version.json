@@ -5,7 +5,14 @@
       "version": "1.29",
       "date": "2026-03-11 17:14",
       "changes": [
-        "Fix: copy default preset to config volume on first startup"
+        "Multi-preset support: upload, activate, delete HandBrake presets",
+        "Report stats overview on Reports page",
+        "Auto-delete originals toggle with warning",
+        "Scan directories button on Conversion page",
+        "Check for Updates in macOS menu bar",
+        "SMTP test connection button",
+        "Rename Directories tab to Media",
+        "Configurable backup directory with Browse picker"
       ]
     },
     {
