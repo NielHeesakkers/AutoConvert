@@ -110,10 +110,40 @@ function setupScanCron(config) {
   }
 }
 
-function runConvertScript() {
+function checkDiskSpaceWarnings(mediaDirs) {
+  const MIN_FREE_GB = 5;
+  const warnings = [];
+  for (const dirPath of mediaDirs) {
+    try {
+      const output = execSync('df -k "' + dirPath + '"', { timeout: 5000 }).toString();
+      const lines = output.trim().split('\n');
+      if (lines.length < 2) continue;
+      const parts = lines[1].trim().split(/\s+/);
+      if (parts.length < 4) continue;
+      const availKB = parseInt(parts[3], 10);
+      if (isNaN(availKB)) continue;
+      const freeGB = availKB / (1024 * 1024);
+      if (freeGB < MIN_FREE_GB) {
+        warnings.push(`${dirPath} has only ${freeGB.toFixed(1)} GB free (minimum recommended: ${MIN_FREE_GB} GB)`);
+      }
+    } catch {}
+  }
+  return warnings;
+}
+
+function runConvertScript(excludeFiles = []) {
   const mediaDirs = getMediaDirs();
   const config = readConfig();
   const autoDelete = config.app?.autoDelete !== false;
+
+  // Pre-conversion disk space check
+  const diskWarnings = checkDiskSpaceWarnings(mediaDirs);
+  if (diskWarnings.length > 0) {
+    for (const w of diskWarnings) {
+      console.warn(`[convert] WARNING: Low disk space - ${w}`);
+    }
+  }
+
   const env = {
     ...process.env,
     APP_DIR,
@@ -123,6 +153,7 @@ function runConvertScript() {
     REPORTS_DIR,
     MEDIA_DIRS: mediaDirs.join(':'),
     DELETE_ORIGINALS: autoDelete ? '1' : '0',
+    EXCLUDE_FILES: excludeFiles.join('\n'),
     PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
   };
   console.log(`[convert] Starting script: ${SCRIPT_PATH}`);
@@ -442,8 +473,14 @@ app.post('/api/convert', (req, res) => {
   if (isRunning()) {
     return res.status(409).json({ error: 'Conversion already running' });
   }
-  const pid = runConvertScript();
-  res.json({ started: true, pid });
+  const excludeFiles = Array.isArray(req.body?.exclude) ? req.body.exclude : [];
+  const diskWarnings = checkDiskSpaceWarnings(getMediaDirs());
+  const pid = runConvertScript(excludeFiles);
+  const result = { started: true, pid };
+  if (diskWarnings.length > 0) {
+    result.diskWarnings = diskWarnings;
+  }
+  res.json(result);
 });
 
 // Stop convert
@@ -1018,6 +1055,53 @@ app.post('/api/app-settings', (req, res) => {
   }
   writeConfig(config);
   res.json({ ok: true, restart });
+});
+
+// --- Disk Space ---
+function getDiskSpace(dirPath) {
+  try {
+    const output = execSync('df -k "' + dirPath + '"', { timeout: 5000 }).toString();
+    const lines = output.trim().split('\n');
+    if (lines.length < 2) return null;
+    // df -k output columns: Filesystem 1024-blocks Used Available Capacity Mounted
+    const parts = lines[1].trim().split(/\s+/);
+    if (parts.length < 4) return null;
+    const totalKB = parseInt(parts[1], 10);
+    const usedKB = parseInt(parts[2], 10);
+    const availKB = parseInt(parts[3], 10);
+    if (isNaN(totalKB) || isNaN(availKB)) return null;
+    const freeBytes = availKB * 1024;
+    const totalBytes = totalKB * 1024;
+    return {
+      path: dirPath,
+      freeBytes,
+      totalBytes,
+      freeGB: (freeBytes / (1024 ** 3)).toFixed(1),
+      totalGB: (totalBytes / (1024 ** 3)).toFixed(1),
+    };
+  } catch {
+    return null;
+  }
+}
+
+app.get('/api/disk-space', (req, res) => {
+  try {
+    const mediaDirs = getMediaDirs();
+    const directories = [];
+    for (const dirPath of mediaDirs) {
+      const info = getDiskSpace(dirPath);
+      if (info) {
+        directories.push(info);
+      } else {
+        directories.push({ path: dirPath, error: 'Could not read disk space', freeBytes: 0, totalBytes: 0, freeGB: '0', totalGB: '0' });
+      }
+    }
+    const freeValues = directories.map(d => parseFloat(d.freeGB)).filter(v => !isNaN(v));
+    const minFreeGB = freeValues.length > 0 ? Math.min(...freeValues) : 0;
+    res.json({ directories, minFreeGB });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- Media Directories ---

@@ -362,10 +362,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Later")
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            let dmgURL = "https://github.com/NielHeesakkers/AutoConvert/releases/download/v\(version)/AutoConvert.dmg"
-            if let downloadURL = URL(string: dmgURL) {
-                NSWorkspace.shared.open(downloadURL)
-            }
+            self.downloadAndInstallUpdate(version: version)
         }
     }
 
@@ -411,10 +408,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     alert.addButton(withTitle: "Later")
                     let response = alert.runModal()
                     if response == .alertFirstButtonReturn {
-                        let dmgURL = "https://github.com/NielHeesakkers/AutoConvert/releases/download/v\(latestVersion)/AutoConvert.dmg"
-                        if let downloadURL = URL(string: dmgURL) {
-                            NSWorkspace.shared.open(downloadURL)
-                        }
+                        self.downloadAndInstallUpdate(version: latestVersion)
                     }
                 } else {
                     self.availableVersion = nil
@@ -428,6 +422,84 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }.resume()
+    }
+
+    private func downloadAndInstallUpdate(version: String) {
+        let dmgURL = "https://github.com/NielHeesakkers/AutoConvert/releases/download/v\(version)/AutoConvert.dmg"
+        guard let url = URL(string: dmgURL) else { return }
+
+        // Update menu to show downloading state
+        if let menu = statusItem.menu, let item = menu.item(withTag: 999) {
+            item.title = "\u{23F3} Downloading update..."
+            item.attributedTitle = nil
+            item.action = nil
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory
+        let dmgPath = tempDir.appendingPathComponent("AutoConvert-update.dmg")
+
+        // Remove old temp file
+        try? FileManager.default.removeItem(at: dmgPath)
+
+        let task = URLSession.shared.downloadTask(with: url) { [weak self] tempURL, response, error in
+            guard let self = self, let tempURL = tempURL, error == nil else {
+                DispatchQueue.main.async {
+                    self?.showUpdateAlert(title: "Update Failed", message: "Download failed: \(error?.localizedDescription ?? "Unknown error")")
+                    self?.addUpdateMenuItem(version: version)
+                }
+                return
+            }
+
+            do {
+                try FileManager.default.moveItem(at: tempURL, to: dmgPath)
+            } catch {
+                DispatchQueue.main.async {
+                    self.showUpdateAlert(title: "Update Failed", message: "Could not save download.")
+                    self.addUpdateMenuItem(version: version)
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.installUpdate(dmgPath: dmgPath)
+            }
+        }
+        task.resume()
+    }
+
+    private func installUpdate(dmgPath: URL) {
+        // Mount DMG, copy app, unmount, relaunch
+        let script = """
+        #!/bin/bash
+        set -e
+        MOUNT_POINT=$(hdiutil attach "\(dmgPath.path)" -nobrowse -noverify | grep "/Volumes/" | awk -F'\t' '{print $NF}')
+        if [ -d "$MOUNT_POINT/AutoConvert.app" ]; then
+            rm -rf "/Applications/AutoConvert.app"
+            cp -R "$MOUNT_POINT/AutoConvert.app" "/Applications/"
+            hdiutil detach "$MOUNT_POINT" -quiet
+            rm -f "\(dmgPath.path)"
+            open "/Applications/AutoConvert.app"
+        else
+            hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
+            exit 1
+        fi
+        """
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/bash")
+        proc.arguments = ["-c", script]
+
+        do {
+            try proc.run()
+            // Quit current app after giving install script a moment
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                self.serverManager.stop()
+                NSApplication.shared.terminate(nil)
+            }
+        } catch {
+            showUpdateAlert(title: "Update Failed", message: "Could not install update: \(error.localizedDescription)")
+            if let v = availableVersion { addUpdateMenuItem(version: v) }
+        }
     }
 
     private func compareVersions(_ v1: String, isNewerThan v2: String) -> Bool {
