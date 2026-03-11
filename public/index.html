@@ -101,6 +101,15 @@
     .tmdb-card .tmdb-size-compare.failed { color: #ef4444; }
     .tmdb-card .tmdb-status-icon { font-size: 13px; margin-right: 4px; }
 
+    /* Queue drag & drop */
+    .queue-item { transition: transform 0.15s ease, box-shadow 0.15s ease; border-radius: 10px; }
+    .queue-item:active { cursor: grabbing; }
+    .queue-item.drag-over { box-shadow: 0 -2px 0 0 #6366f1; }
+    .queue-grip { opacity: 0.4; transition: opacity 0.15s; }
+    .queue-item:hover .queue-grip { opacity: 0.8; }
+    [data-theme="light"] .queue-grip { color: #999 !important; }
+    [data-theme="light"] .queue-item.drag-over { box-shadow: 0 -2px 0 0 #6366f1; }
+
     /* Directories */
     .dir-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: #0f1117; border-radius: 10px; margin-bottom: 8px; cursor: pointer; user-select: none; }
     .dir-header:hover { background: #13151e; }
@@ -852,12 +861,34 @@ function resetExcluded() {
   loadConvQueue();
 }
 
-function moveQueueItem(path, direction) {
-  const idx = queueOrder.indexOf(path);
-  if (idx < 0) return;
-  const newIdx = idx + direction;
-  if (newIdx < 0 || newIdx >= queueOrder.length) return;
-  [queueOrder[idx], queueOrder[newIdx]] = [queueOrder[newIdx], queueOrder[idx]];
+let _dragIdx = -1;
+
+function onQueueDragStart(e, idx) {
+  _dragIdx = idx;
+  e.dataTransfer.effectAllowed = 'move';
+  e.target.closest('.queue-item').style.opacity = '0.4';
+}
+
+function onQueueDragEnd(e) {
+  _dragIdx = -1;
+  e.target.closest('.queue-item').style.opacity = '';
+  document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('drag-over'));
+}
+
+function onQueueDragOver(e, idx) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('drag-over'));
+  if (idx !== _dragIdx) e.currentTarget.classList.add('drag-over');
+}
+
+function onQueueDrop(e, idx) {
+  e.preventDefault();
+  document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('drag-over'));
+  if (_dragIdx < 0 || _dragIdx === idx) return;
+  const item = queueOrder.splice(_dragIdx, 1)[0];
+  queueOrder.splice(idx, 0, item);
+  _dragIdx = -1;
   renderQueue();
 }
 
@@ -980,12 +1011,11 @@ function renderQueue() {
 
   filteredResults.forEach((f, i) => {
     const filePath = f.path || '';
-    const isFirst = i === 0;
-    const isLast = i === displayCount - 1;
-    html += `<div style="position:relative;">${renderTmdbCard(f)}<div style="position:absolute;top:8px;right:40px;display:flex;flex-direction:column;gap:2px;">`;
-    html += `<button onclick="moveQueueItem('${escAttr(filePath)}',-1)" title="Move up" ${isFirst ? 'disabled' : ''} style="background:none;border:none;color:${isFirst?'#333':'#666'};font-size:14px;cursor:${isFirst?'default':'pointer'};padding:1px 5px;border-radius:3px;line-height:1;" ${isFirst?'':'onmouseover="this.style.color=\'#4a9eff\';this.style.background=\'rgba(74,158,255,0.1)\'" onmouseout="this.style.color=\'#666\';this.style.background=\'none\'"'}>&#9650;</button>`;
-    html += `<button onclick="moveQueueItem('${escAttr(filePath)}',1)" title="Move down" ${isLast ? 'disabled' : ''} style="background:none;border:none;color:${isLast?'#333':'#666'};font-size:14px;cursor:${isLast?'default':'pointer'};padding:1px 5px;border-radius:3px;line-height:1;" ${isLast?'':'onmouseover="this.style.color=\'#4a9eff\';this.style.background=\'rgba(74,158,255,0.1)\'" onmouseout="this.style.color=\'#666\';this.style.background=\'none\'"'}>&#9660;</button>`;
-    html += `</div><button onclick="excludeFile('${escAttr(filePath)}')" title="Remove from queue" style="position:absolute;top:10px;right:10px;background:none;border:none;color:#555;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px;line-height:1;" onmouseover="this.style.color='#ef4444';this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.color='#555';this.style.background='none'">&times;</button></div>`;
+    html += `<div class="queue-item" draggable="true" ondragstart="onQueueDragStart(event,${i})" ondragend="onQueueDragEnd(event)" ondragover="onQueueDragOver(event,${i})" ondrop="onQueueDrop(event,${i})" style="position:relative;cursor:grab;">`;
+    html += `<div class="queue-grip" style="position:absolute;top:50%;left:6px;transform:translateY(-50%);color:#444;font-size:11px;line-height:1;letter-spacing:2px;pointer-events:none;">⠿</div>`;
+    html += `<div style="margin-left:4px;">${renderTmdbCard(f)}</div>`;
+    html += `<button onclick="excludeFile('${escAttr(filePath)}')" title="Remove from queue" style="position:absolute;top:10px;right:10px;background:none;border:none;color:#555;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px;line-height:1;" onmouseover="this.style.color='#ef4444';this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.color='#555';this.style.background='none'">&times;</button>`;
+    html += `</div>`;
   });
   html += '</div>';
   el.innerHTML = html;
