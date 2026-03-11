@@ -621,10 +621,16 @@ async function loadProgress() {
       const completed = p.completed || [];
       const ok = completed.filter(c => c.status === 'ok').length;
       const failed = completed.filter(c => c.status !== 'ok').length;
+      const total = p.total || files.length;
 
       document.getElementById('convBarTotal').style.width = '100%';
-      document.getElementById('convBarTotal').style.background = failed > 0 && ok === 0 ? '#ef4444' : '#4ade80';
-      document.getElementById('convLabelTotal').textContent = `Done — ${ok} converted, ${failed} failed`;
+      if (total === 0) {
+        document.getElementById('convBarTotal').style.background = '#888';
+        document.getElementById('convLabelTotal').textContent = p.message || 'No MKV files found to convert';
+      } else {
+        document.getElementById('convBarTotal').style.background = failed > 0 && ok === 0 ? '#ef4444' : '#4ade80';
+        document.getElementById('convLabelTotal').textContent = `Done — ${ok} converted, ${failed} failed`;
+      }
 
       // Render cards immediately (without TMDB), then enrich with TMDB in background
       function renderDoneCards() {
@@ -662,7 +668,8 @@ async function loadProgress() {
         }).catch(() => {}).finally(() => { progressTmdbLoading = false; });
       }
 
-      // Clear done state after 30 seconds, go back to idle queue
+      // Clear done state after timeout, go back to idle queue
+      const doneTimeout = total === 0 ? 10000 : 30000;
       if (!loadProgress._doneTimer) {
         loadProgress._doneTimer = setTimeout(async () => {
           loadProgress._doneTimer = null;
@@ -670,7 +677,7 @@ async function loadProgress() {
           document.getElementById('convBarTotal').style.background = '';
           try { await fetch('/api/convert/progress/clear', { method: 'POST' }); } catch {}
           loadStatus();
-        }, 30000);
+        }, doneTimeout);
       }
       return;
     }

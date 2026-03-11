@@ -34,6 +34,24 @@ echo "0" > "$REPORT_DIR/skipped_empty.txt"
 # Clear old progress/hb files
 rm -f "$PROGRESS_JSON" "$HB_LOG"
 
+# Helper: write a quick "done" progress so the UI shows feedback
+write_quick_done() {
+  local msg="$1"
+  python3 -c "
+import json, datetime
+progress = {
+    'status': 'done',
+    'started': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'),
+    'finished': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'),
+    'total': 0, 'current': 0, 'current_file': '',
+    'files': [], 'completed': [],
+    'message': '$msg'
+}
+with open('$PROGRESS_JSON', 'w') as f:
+    json.dump(progress, f, indent=2)
+" 2>/dev/null
+}
+
 # Check if media is available
 MEDIA_FOUND=false
 for DIR in "${DIRS[@]}"; do
@@ -41,12 +59,14 @@ for DIR in "${DIRS[@]}"; do
 done
 if [ "$MEDIA_FOUND" = false ]; then
   echo "$(date) - No media directories available, skipped." >> "$LOGFILE"
+  write_quick_done "No media directories available"
   exit 0
 fi
 
 # Check if HandBrakeCLI is available
 if ! command -v HandBrakeCLI &>/dev/null; then
   echo "$(date) - HandBrakeCLI not found." >> "$LOGFILE"
+  write_quick_done "HandBrakeCLI not found"
   exit 1
 fi
 
@@ -188,6 +208,22 @@ fi
 # ─── PASS 2: Convert all files from master list ───
 if [ "$TOTAL_COUNT" -eq 0 ]; then
   echo "  No MKV files to convert." >> "$LOGFILE"
+  # Write a progress JSON so the UI can show "no files" feedback
+  python3 -c "
+import json
+progress = {
+    'status': 'done',
+    'started': '$START_TIME',
+    'finished': '$START_TIME',
+    'total': 0,
+    'current': 0,
+    'current_file': '',
+    'files': [],
+    'completed': []
+}
+with open('$PROGRESS_JSON', 'w') as f:
+    json.dump(progress, f, indent=2)
+"
 else
   INDEX=0
   while IFS='|' read -r DIRNAME mkv <&3; do

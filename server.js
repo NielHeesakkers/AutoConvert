@@ -78,14 +78,25 @@ function runConvertScript() {
     REPORTS_DIR,
     MEDIA_MOVIES,
     MEDIA_SERIES,
-    PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
+    PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
   };
+  console.log(`[convert] Starting script: ${SCRIPT_PATH}`);
+  console.log(`[convert] MEDIA_MOVIES=${MEDIA_MOVIES}, MEDIA_SERIES=${MEDIA_SERIES}`);
+  const logStream = fs.openSync(path.join(LOG_DIR, 'convert_stderr.log'), 'a');
   const child = spawn('/bin/bash', [SCRIPT_PATH], {
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', 'ignore', logStream],
     env,
   });
+  child.on('error', (err) => {
+    console.error(`[convert] Spawn error: ${err.message}`);
+  });
+  child.on('exit', (code, signal) => {
+    console.log(`[convert] Script exited with code=${code}, signal=${signal}`);
+    try { fs.closeSync(logStream); } catch {}
+  });
   child.unref();
+  console.log(`[convert] Script spawned with PID ${child.pid}`);
   return child.pid;
 }
 
