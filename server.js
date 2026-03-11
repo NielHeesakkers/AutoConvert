@@ -402,20 +402,8 @@ app.post('/api/convert', (req, res) => {
   if (isRunning()) {
     return res.status(409).json({ error: 'Conversion already running' });
   }
-  if (DOCKER) {
-    const pid = runConvertScript();
-    res.json({ started: true, pid });
-  } else {
-    const child = spawn('/bin/bash', [
-      '/Users/server/Scripts/daily_mkv_convert.sh',
-    ], {
-      detached: true,
-      stdio: 'ignore',
-      env: { ...process.env, PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin' },
-    });
-    child.unref();
-    res.json({ started: true, pid: child.pid });
-  }
+  const pid = runConvertScript();
+  res.json({ started: true, pid });
 });
 
 // Stop convert
