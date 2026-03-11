@@ -459,7 +459,6 @@
 
       <!-- Conversie -->
       <div class="section active" id="sec-convert">
-        <div id="diskSpaceWarning" style="display:none;"></div>
         <div class="panel">
           <div class="conv-status-row">
             <div class="conv-indicator">
@@ -485,6 +484,7 @@
 
       <!-- Rapporten -->
       <div class="section" id="sec-reports">
+        <div id="diskSpaceWarning" style="display:none;margin-bottom:12px;"></div>
         <div id="reportStats" style="display:none;margin-bottom:16px;">
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
             <div class="panel" style="margin:0;padding:14px;text-align:center;">
@@ -731,7 +731,7 @@ function navigateTo(section) {
   if (nav) nav.classList.add('active');
   document.getElementById('pageTitle').textContent = TITLES[section] || section;
   localStorage.setItem('autoconvert_section', section);
-  if (section === 'convert') loadDiskSpace();
+  if (section === 'reports') loadDiskSpace();
   closeSidebar();
 }
 document.getElementById('sidebarNav').addEventListener('click', e => {
@@ -899,7 +899,6 @@ let isConvertRunning = false;
 let progressTmdbData = null;
 let progressTmdbLoading = false;
 async function loadStatus() {
-  loadDiskSpace();
   try {
     const res = await fetch('/api/status');
     const data = await res.json();
@@ -1503,7 +1502,7 @@ async function loadReportStats() {
   } catch {}
 }
 let reportsOffset=0; const REPORTS_LIMIT=10; let reportsHasMore=true;
-async function loadReports() { reportsOffset=0; reportsHasMore=true; document.getElementById('reportsContainer').innerHTML=''; loadReportStats(); await loadMoreReports(); }
+async function loadReports() { reportsOffset=0; reportsHasMore=true; document.getElementById('reportsContainer').innerHTML=''; loadReportStats(); loadDiskSpace(); await loadMoreReports(); }
 async function loadMoreReports() {
   try {
     const res=await fetch(`/api/reports?offset=${reportsOffset}&limit=${REPORTS_LIMIT}`); const d=await res.json(); const reports=d.reports||[];
