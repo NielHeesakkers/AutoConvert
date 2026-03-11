@@ -1,6 +1,13 @@
 {
-  "version": "1.27",
+  "version": "1.28",
   "history": [
+    {
+      "version": "1.28",
+      "date": "2026-03-11 07:46",
+      "changes": [
+        "Fix conversion: use runConvertScript() for both Docker and non-Docker"
+      ]
+    },
     {
       "version": "1.27",
       "date": "2026-03-11 07:00",
