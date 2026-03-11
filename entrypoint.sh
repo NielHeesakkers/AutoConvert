@@ -1,4 +1,11 @@
 #!/bin/bash
+
+# Copy default preset to config volume if it doesn't exist
+if [ ! -f /app/config/Niel.json ] && [ -f /app/scripts/Niel.json ]; then
+  cp /app/scripts/Niel.json /app/config/Niel.json
+  echo "[init] Copied default preset to /app/config/Niel.json"
+fi
+
 # Mount Synology NAS via CIFS if credentials are provided
 if [ -n "$NAS_IP" ] && [ -n "$NAS_USER" ] && [ -n "$NAS_PASS" ]; then
   NAS_MOVIES_SHARE="${NAS_MOVIES_SHARE:-/Media/Movies}"
