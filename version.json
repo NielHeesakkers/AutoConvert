@@ -1,6 +1,13 @@
 {
-  "version": "1.28",
+  "version": "1.29",
   "history": [
+    {
+      "version": "1.29",
+      "date": "2026-03-11 17:14",
+      "changes": [
+        "Fix: copy default preset to config volume on first startup"
+      ]
+    },
     {
       "version": "1.28",
       "date": "2026-03-11 07:46",
