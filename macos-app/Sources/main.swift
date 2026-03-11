@@ -130,6 +130,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var serverManager: ServerManager!
     private let defaultPort = 3742
+    private var availableVersion: String?
+    private var availableChangelog: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let port = readPortFromConfig() ?? defaultPort
@@ -148,6 +150,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 self.openWebUI(port: port)
             }
+        }
+
+        // Silent update check after 5 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            self.checkForUpdatesInBackground()
         }
     }
 
@@ -251,13 +258,124 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func checkForUpdatesInBackground() {
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        let updateURL = "https://raw.githubusercontent.com/NielHeesakkers/AutoConvert/main/version.json"
+
+        let cacheBust = "\(updateURL)?t=\(Int(Date().timeIntervalSince1970))"
+        guard let url = URL(string: cacheBust) else { return }
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+            guard let self = self,
+                  let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let latestVersion = json["version"] as? String,
+                  self.compareVersions(latestVersion, isNewerThan: currentVersion) else { return }
+
+            var changeLog = ""
+            if let history = json["history"] as? [[String: Any]],
+               let latest = history.first,
+               let changes = latest["changes"] as? [String] {
+                changeLog = "\n\nWhat's new:\n• " + changes.joined(separator: "\n• ")
+            }
+
+            DispatchQueue.main.async {
+                self.availableVersion = latestVersion
+                self.availableChangelog = changeLog
+                self.showUpdateBadge()
+                self.addUpdateMenuItem(version: latestVersion)
+            }
+        }.resume()
+    }
+
+    private func showUpdateBadge() {
+        guard let button = statusItem.button else { return }
+
+        // Get the current base icon
+        let baseImage = NSImage(systemSymbolName: "film.stack", accessibilityDescription: "AutoConvert")
+            ?? NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "AutoConvert")
+        guard let baseImage = baseImage else { return }
+
+        let size = NSSize(width: 18, height: 18)
+        let badgeImage = NSImage(size: size, flipped: false) { rect in
+            // Draw the base icon
+            baseImage.draw(in: rect)
+
+            // Draw orange badge dot in top-right corner
+            let badgeSize: CGFloat = 6
+            let badgeRect = NSRect(
+                x: rect.width - badgeSize - 1,
+                y: rect.height - badgeSize - 1,
+                width: badgeSize,
+                height: badgeSize
+            )
+            NSColor.systemOrange.setFill()
+            NSBezierPath(ovalIn: badgeRect).fill()
+
+            return true
+        }
+        badgeImage.isTemplate = false
+        button.image = badgeImage
+    }
+
+    private func clearUpdateBadge() {
+        guard let button = statusItem.button else { return }
+        let baseImage = NSImage(systemSymbolName: "film.stack", accessibilityDescription: "AutoConvert")
+            ?? NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "AutoConvert")
+        button.image = baseImage
+    }
+
+    private func addUpdateMenuItem(version: String) {
+        guard let menu = statusItem.menu else { return }
+
+        // Remove existing update-available item if present (tag 999)
+        if let existing = menu.item(withTag: 999) {
+            menu.removeItem(existing)
+        }
+
+        // Insert "Update Available" item after the version title (index 1 = separator, so insert at 2)
+        let updateAvailable = NSMenuItem(title: "⬆ Update Available — v\(version)", action: #selector(downloadUpdate), keyEquivalent: "")
+        updateAvailable.target = self
+        updateAvailable.tag = 999
+
+        // Add orange text attribute
+        let attributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: NSColor.systemOrange,
+            .font: NSFont.menuFont(ofSize: 13),
+        ]
+        updateAvailable.attributedTitle = NSAttributedString(string: "⬆ Update Available — v\(version)", attributes: attributes)
+
+        menu.insertItem(updateAvailable, at: 2)
+    }
+
+    @objc private func downloadUpdate() {
+        guard let version = availableVersion else { return }
+
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        let changeLog = availableChangelog ?? ""
+
+        let alert = NSAlert()
+        alert.messageText = "Update Available"
+        alert.informativeText = "AutoConvert v\(version) is available (you have v\(currentVersion)).\(changeLog)"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Download Update")
+        alert.addButton(withTitle: "Later")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            let dmgURL = "https://github.com/NielHeesakkers/AutoConvert/releases/download/v\(version)/AutoConvert.dmg"
+            if let downloadURL = URL(string: dmgURL) {
+                NSWorkspace.shared.open(downloadURL)
+            }
+        }
+    }
+
     @objc private func checkForUpdates() {
         let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
         let updateURL = "https://raw.githubusercontent.com/NielHeesakkers/AutoConvert/main/version.json"
 
         let cacheBust = "\(updateURL)?t=\(Int(Date().timeIntervalSince1970))"
         guard let url = URL(string: cacheBust) else { return }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
         URLSession.shared.dataTask(with: request) { data, _, error in
             DispatchQueue.main.async {
                 if let error = error {
@@ -272,13 +390,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
 
                 if self.compareVersions(latestVersion, isNewerThan: currentVersion) {
-                    // Get changelog for latest version
+                    // Store update info and show badge
                     var changeLog = ""
                     if let history = json["history"] as? [[String: Any]],
                        let latest = history.first,
                        let changes = latest["changes"] as? [String] {
                         changeLog = "\n\nWhat's new:\n• " + changes.joined(separator: "\n• ")
                     }
+
+                    self.availableVersion = latestVersion
+                    self.availableChangelog = changeLog
+                    self.showUpdateBadge()
+                    self.addUpdateMenuItem(version: latestVersion)
 
                     let alert = NSAlert()
                     alert.messageText = "Update Available"
@@ -294,6 +417,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         }
                     }
                 } else {
+                    self.availableVersion = nil
+                    self.availableChangelog = nil
+                    self.clearUpdateBadge()
+                    // Remove update menu item if present
+                    if let menu = self.statusItem.menu, let item = menu.item(withTag: 999) {
+                        menu.removeItem(item)
+                    }
                     self.showUpdateAlert(title: "You're Up to Date", message: "AutoConvert v\(currentVersion) is the latest version.")
                 }
             }

@@ -1,6 +1,14 @@
 {
-  "version": "1.29",
+  "version": "1.30",
   "history": [
+    {
+      "version": "1.30",
+      "date": "2026-03-11 18:30",
+      "changes": [
+        "Show update badge on menu bar icon when update available",
+        "Update available indicator in menu"
+      ]
+    },
     {
       "version": "1.29",
       "date": "2026-03-11 17:14",
