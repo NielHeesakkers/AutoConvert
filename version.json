@@ -1,6 +1,13 @@
 {
-  "version": "1.26",
+  "version": "1.27",
   "history": [
+    {
+      "version": "1.27",
+      "date": "2026-03-11 07:00",
+      "changes": [
+        "Fix conversion feedback: show clear status when no MKV files found"
+      ]
+    },
     {
       "version": "1.26",
       "date": "2026-03-10 18:54",
