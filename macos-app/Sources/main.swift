@@ -255,8 +255,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
         let updateURL = "https://raw.githubusercontent.com/NielHeesakkers/AutoConvert/main/version.json"
 
-        guard let url = URL(string: updateURL) else { return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        let cacheBust = "\(updateURL)?t=\(Int(Date().timeIntervalSince1970))"
+        guard let url = URL(string: cacheBust) else { return }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        URLSession.shared.dataTask(with: request) { data, _, error in
             DispatchQueue.main.async {
                 if let error = error {
                     self.showUpdateAlert(title: "Update Check Failed", message: "Could not reach update server.\n\n\(error.localizedDescription)")
