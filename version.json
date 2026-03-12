@@ -6,7 +6,8 @@
       "date": "2026-03-12 10:00",
       "changes": [
         "Resend report emails from the Reports page",
-        "Send to all recipients or a specific email address"
+        "Styled resend modal with animation",
+        "Reconstruct download links for old reports without mp4_path"
       ]
     },
     {
