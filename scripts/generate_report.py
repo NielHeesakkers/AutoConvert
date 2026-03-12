@@ -138,13 +138,21 @@ def generate_html(report_dir):
     date_str = now.strftime("%A %d %B %Y")
     date_short = now.strftime("%d %B %Y")
 
+    # Load server URL from config for download links
+    try:
+        _cfg_dl = json.load(open(CONFIG_FILE))
+        server_url = _cfg_dl.get("serverUrl", "").rstrip("/")
+    except Exception:
+        server_url = ""
+
     tmdb_cache = {}
     converted_items = []
     for line in converted:
         parts = line.split("|")
         if len(parts) < 5:
             continue
-        section, basename, old_size, new_size, duration = parts
+        section, basename, old_size, new_size, duration = parts[:5]
+        mp4_path = parts[5] if len(parts) > 5 else ""
         title, year, media_type, season, episode = parse_title_year(basename)
 
         if season is not None and episode is not None:
@@ -158,7 +166,7 @@ def generate_html(report_dir):
         converted_items.append({
             "section": section, "basename": basename,
             "old_size": old_size, "new_size": new_size,
-            "duration": duration, "info": info,
+            "duration": duration, "mp4_path": mp4_path, "info": info,
         })
 
     failed_items = []
@@ -274,6 +282,11 @@ def generate_html(report_dir):
             except (ValueError, ZeroDivisionError):
                 pass
 
+            download_html = ""
+            if server_url and item.get("mp4_path"):
+                dl_url = f'{server_url}/api/download?path={urllib.parse.quote(item["mp4_path"])}'
+                download_html = f'<a href="{dl_url}" style="display: inline-block; margin-top: 6px; background: #1a73e8; color: #fff; padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; text-decoration: none;">⬇ Download MP4</a>'
+
             html.append(f"""
 <div style="display: flex; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #f0f0f0;">
   <div style="flex-shrink: 0; width: 65px; margin-right: 15px;">{poster_html}</div>
@@ -286,6 +299,7 @@ def generate_html(report_dir):
       {size_saved}
       <span style="margin-left: 8px; color: #999;">⏱ {item["duration"]}min</span>
     </div>
+    {download_html}
   </div>
 </div>""")
 
@@ -361,7 +375,7 @@ def save_json_report(report_dir, converted_items, failed_items, dupes, skipped):
     converted_json = []
     for item in converted_items:
         info = item["info"]
-        converted_json.append({
+        entry = {
             "section": item["section"],
             "basename": item["basename"],
             "old_size": item["old_size"],
@@ -376,7 +390,10 @@ def save_json_report(report_dir, converted_items, failed_items, dupes, skipped):
                 "ep_label": info.get("ep_label", ""),
                 "ep_name": info.get("ep_name", ""),
             },
-        })
+        }
+        if item.get("mp4_path"):
+            entry["mp4_path"] = item["mp4_path"]
+        converted_json.append(entry)
 
     failed_json = []
     for item in failed_items:

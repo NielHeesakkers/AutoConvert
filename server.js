@@ -1231,6 +1231,7 @@ app.get('/api/app-settings', (req, res) => {
     port: config.app?.port || 3742,
     backupDir: config.app?.backupDir || DEFAULT_BACKUP_DIR,
     autoDelete: config.app?.autoDelete !== false,
+    serverUrl: config.serverUrl || '',
   });
 });
 
@@ -1257,8 +1258,68 @@ app.post('/api/app-settings', (req, res) => {
   if (autoDelete !== undefined) {
     config.app.autoDelete = !!autoDelete;
   }
+  if (req.body.serverUrl !== undefined) {
+    config.serverUrl = req.body.serverUrl.trim().replace(/\/+$/, '');
+  }
   writeConfig(config);
   res.json({ ok: true, restart });
+});
+
+// --- File Download ---
+app.get('/api/download', (req, res) => {
+  const filePath = req.query.path;
+  if (!filePath) return res.status(400).json({ error: 'Missing path parameter' });
+
+  // Security: resolve to absolute path and block traversal
+  const resolved = path.resolve(filePath);
+  if (resolved !== filePath && !filePath.startsWith('/')) {
+    return res.status(403).json({ error: 'Invalid path' });
+  }
+
+  // Security: only allow .mp4 files
+  if (path.extname(resolved).toLowerCase() !== '.mp4') {
+    return res.status(403).json({ error: 'Only MP4 files can be downloaded' });
+  }
+
+  // Security: path must be within a configured media directory
+  const mediaDirs = getMediaDirs();
+  const isAllowed = mediaDirs.some(dir => resolved.startsWith(path.resolve(dir) + '/'));
+  if (!isAllowed) {
+    return res.status(403).json({ error: 'File is not within a media directory' });
+  }
+
+  // Check file exists
+  if (!fs.existsSync(resolved)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  const filename = path.basename(resolved);
+  const stat = fs.statSync(resolved);
+
+  // Support range requests for large files (resume downloads)
+  const range = req.headers.range;
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+    const chunkSize = end - start + 1;
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunkSize,
+      'Content-Type': 'video/mp4',
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
+    });
+    fs.createReadStream(resolved, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, {
+      'Content-Length': stat.size,
+      'Content-Type': 'video/mp4',
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
+      'Accept-Ranges': 'bytes',
+    });
+    fs.createReadStream(resolved).pipe(res);
+  }
 });
 
 // --- Disk Space ---

@@ -309,7 +309,7 @@ with open('$PROGRESS_JSON', 'w') as f:
       if [ "${DELETE_ORIGINALS:-1}" = "1" ]; then
         rm "$mkv"
       fi
-      echo "${DIRNAME}|${base}|${filesize}|${newsize}|${DURATION}" >> "$REPORT_DIR/converted.txt"
+      echo "${DIRNAME}|${base}|${filesize}|${newsize}|${DURATION}|${mp4}" >> "$REPORT_DIR/converted.txt"
       echo "    OK" >> "$LOGFILE"
       CONV_STATUS="ok"
       CONV_NEWSIZE="$newsize"

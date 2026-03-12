@@ -1,6 +1,16 @@
 {
-  "version": "1.36",
+  "version": "1.37",
   "history": [
+    {
+      "version": "1.37",
+      "date": "2026-03-12 02:00",
+      "changes": [
+        "Download links for converted MP4 files in web UI reports",
+        "Download links in email reports (via server URL)",
+        "Server URL setting in Settings for external download links",
+        "Secure download endpoint with path validation and range request support"
+      ]
+    },
     {
       "version": "1.36",
       "date": "2026-03-12 01:00",
