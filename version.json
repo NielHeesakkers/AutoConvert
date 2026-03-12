@@ -1,6 +1,14 @@
 {
-  "version": "1.35",
+  "version": "1.36",
   "history": [
+    {
+      "version": "1.36",
+      "date": "2026-03-12 01:00",
+      "changes": [
+        "Rate limiting on login: 5 attempts/min, 5 minute lockout",
+        "Brute force protection per IP address"
+      ]
+    },
     {
       "version": "1.35",
       "date": "2026-03-12 00:00",
