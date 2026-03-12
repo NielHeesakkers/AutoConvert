@@ -87,7 +87,7 @@ class ServerManager {
         proc.environment = ProcessInfo.processInfo.environment.merging([
             "AUTOCONVERT_APP": "true",
             "PORT": String(port),
-            "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+            "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         ]) { _, new in new }
 
         proc.terminationHandler = { [weak self] process in
@@ -593,8 +593,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkHandBrakeCLI() {
-        let paths = ["/opt/homebrew/bin/HandBrakeCLI", "/usr/local/bin/HandBrakeCLI"]
-        let found = paths.contains { FileManager.default.fileExists(atPath: $0) }
+        let found = FileManager.default.fileExists(atPath: "/opt/homebrew/bin/HandBrakeCLI")
         if !found {
             DispatchQueue.main.async {
                 let alert = NSAlert()

@@ -6,7 +6,6 @@ const { execSync, spawn } = require('child_process');
 const cron = require('node-cron');
 const https = require('https');
 const net = require('net');
-const nodemailer = require('nodemailer');
 const bcrypt = require('bcryptjs');
 const session = require('express-session');
 
@@ -444,7 +443,7 @@ function runConvertScript(excludeFiles = [], fileOrder = []) {
     SKIP_EMAIL: (config.schedule?.emailHour !== undefined && config.schedule?.emailHour !== null && config.schedule?.emailHour !== '') ? '1' : '0',
     EXCLUDE_FILES: excludeFiles.join('\n'),
     FILE_ORDER: fileOrder.join('\n'),
-    PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+    PATH: '/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin',
   };
   console.log(`[convert] Starting script: ${SCRIPT_PATH}`);
   console.log(`[convert] Media dirs: ${mediaDirs.join(', ')}`);
@@ -687,24 +686,24 @@ app.post('/api/test-email', async (req, res) => {
   const from = smtp.from || 'noreply@autoconvert.local';
   const now = new Date().toLocaleString('en-US', { timeZone: 'Europe/Amsterdam' });
   try {
-    const transporter = nodemailer.createTransport({
-      host: smtp.host,
-      port: smtp.port || 587,
-      secure: smtp.tls && !smtp.starttls,
-      auth: { user: smtp.user, pass: smtp.password },
-      tls: { rejectUnauthorized: false }
-    });
-    await transporter.sendMail({
-      from,
-      to: email,
-      subject: `AutoConvert Test - ${now}`,
-      html: '<html><body style="font-family:-apple-system,Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px;">'
-        + '<div style="background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">'
-        + '<h2 style="color:#6366f1;margin:0 0 10px;">AutoConvert Test</h2>'
-        + `<p>This is a test email sent on <strong>${now}</strong>.</p>`
-        + '<p style="color:#888;">If you receive this email, the email configuration is working correctly.</p>'
-        + '</div></body></html>'
-    });
+    const emailContent = [
+      `Content-Type: text/html; charset=utf-8`,
+      `Subject: AutoConvert Test - ${now}`,
+      `From: ${from}`,
+      `To: ${email}`,
+      ``,
+      `<html><body style="font-family:-apple-system,Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px;">`,
+      `<div style="background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">`,
+      `<h2 style="color:#6366f1;margin:0 0 10px;">AutoConvert Test</h2>`,
+      `<p>This is a test email sent on <strong>${now}</strong>.</p>`,
+      `<p style="color:#888;">If you receive this email, the email configuration is working correctly.</p>`,
+      `</div></body></html>`
+    ].join('\n');
+    const msmtpPath = fs.existsSync(MSMTP_BIN) ? MSMTP_BIN : 'msmtp';
+    const tmpFile = '/tmp/autoconvert_test_email.txt';
+    fs.writeFileSync(tmpFile, emailContent);
+    execSync(`cat "${tmpFile}" | ${msmtpPath} ${email}`, { timeout: 30000 });
+    try { fs.unlinkSync(tmpFile); } catch {}
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

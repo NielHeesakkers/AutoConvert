@@ -100,45 +100,11 @@ if [ -z "$PRESET_NAME" ]; then
 fi
 echo "Using preset: $PRESET_NAME from $PRESET_FILE" >> "$LOGFILE"
 
-# ─── Detect encoder compatibility ───
-# The preset uses vt_h265_10bit (Apple VideoToolbox) and ca_aac (Core Audio)
-# which are macOS-only. Detect available encoders and override if needed.
+# ─── Apple Silicon: use native VideoToolbox + Core Audio encoders ───
+# No fallbacks needed — only M-chip Macs are supported
 ENCODER_OVERRIDES=""
-HB_HELP=$(HandBrakeCLI --help 2>&1 || echo "")
-AVAILABLE_VENCODERS=$(echo "$HB_HELP" | sed -n '/--encoder <string>/,/--encoder-preset/p')
-AVAILABLE_AENCODERS=$(echo "$HB_HELP" | sed -n '/--aencoder <string>/,/--audio-copy-mask/p')
-
-# Check video encoder
 PRESET_VENCODER=$(python3 -c "import json; print(json.load(open('$PRESET_FILE'))['PresetList'][0].get('VideoEncoder',''))" 2>/dev/null)
-if [ -n "$PRESET_VENCODER" ] && ! echo "$AVAILABLE_VENCODERS" | grep -q "$PRESET_VENCODER"; then
-  # Preset encoder not available, find best fallback
-  if echo "$AVAILABLE_VENCODERS" | grep -q "x265_10bit"; then
-    ENCODER_OVERRIDES="-e x265_10bit -q 22 --encoder-preset medium"
-    echo "  Encoder override: $PRESET_VENCODER → x265_10bit (CRF 22, medium)" >> "$LOGFILE"
-  elif echo "$AVAILABLE_VENCODERS" | grep -q "x265"; then
-    ENCODER_OVERRIDES="-e x265 -q 22 --encoder-preset medium"
-    echo "  Encoder override: $PRESET_VENCODER → x265 (CRF 22, medium)" >> "$LOGFILE"
-  elif echo "$AVAILABLE_VENCODERS" | grep -q "x264"; then
-    ENCODER_OVERRIDES="-e x264 -q 20 --encoder-preset medium"
-    echo "  Encoder override: $PRESET_VENCODER → x264 (CRF 20, medium)" >> "$LOGFILE"
-  fi
-else
-  echo "  Using preset encoder: ${PRESET_VENCODER:-unknown}" >> "$LOGFILE"
-fi
-
-# Check audio encoder
-PRESET_AENCODER=$(python3 -c "import json; print(json.load(open('$PRESET_FILE'))['PresetList'][0]['AudioList'][0].get('AudioEncoder',''))" 2>/dev/null)
-if [ -n "$PRESET_AENCODER" ] && ! echo "$AVAILABLE_AENCODERS" | grep -q "$PRESET_AENCODER"; then
-  if echo "$AVAILABLE_AENCODERS" | grep -q "av_aac"; then
-    ENCODER_OVERRIDES="$ENCODER_OVERRIDES -E av_aac"
-    echo "  Audio encoder override: $PRESET_AENCODER → av_aac" >> "$LOGFILE"
-  elif echo "$AVAILABLE_AENCODERS" | grep -q "fdk_aac"; then
-    ENCODER_OVERRIDES="$ENCODER_OVERRIDES -E fdk_aac"
-    echo "  Audio encoder override: $PRESET_AENCODER → fdk_aac" >> "$LOGFILE"
-  fi
-else
-  echo "  Using preset audio encoder: ${PRESET_AENCODER:-unknown}" >> "$LOGFILE"
-fi
+echo "  Using preset encoder: ${PRESET_VENCODER:-vt_h265_10bit} (Apple Silicon)" >> "$LOGFILE"
 
 # ─── PASS 1: Scan all directories, remove dupes, count empties, build master list ───
 MASTER_LIST="/tmp/daily_mkv_master_list.txt"
