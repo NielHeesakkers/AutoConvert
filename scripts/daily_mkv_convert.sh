@@ -358,13 +358,19 @@ fi
 
 echo "=== Done: $(date) | Converted: $SUCCESS | Failed: $FAILED | Dupes removed: $DUPES ===" >> "$LOGFILE"
 
-# Generate and send HTML email report with TMDB info (only if something happened)
+# Generate report and optionally send email (skip if SKIP_EMAIL=1, email sent by separate cron)
 if [ "$SUCCESS" -gt 0 ] || [ "$FAILED" -gt 0 ] || [ "$DUPES" -gt 0 ]; then
-  MSMTP_BIN=$(command -v msmtp)
   PYTHON_BIN=$(command -v python3)
-  RECIPIENTS=$($PYTHON_BIN -c "import json; print(' '.join(r['email'] for r in json.load(open('$CONFIG_FILE'))['recipients'] if r.get('active', True)))")
-  if [ -n "$RECIPIENTS" ]; then
-    $PYTHON_BIN "$APP_DIR/scripts/generate_report.py" "$REPORT_DIR" "$CONFIG_FILE" "$REPORTS_DIR" | $MSMTP_BIN $RECIPIENTS
+  if [ "${SKIP_EMAIL:-0}" = "1" ]; then
+    # Only generate JSON report, email will be sent by the scheduled email cron
+    $PYTHON_BIN "$APP_DIR/scripts/generate_report.py" "$REPORT_DIR" "$CONFIG_FILE" "$REPORTS_DIR" > /dev/null
+    echo "  Report saved, email deferred to scheduled time." >> "$LOGFILE"
+  else
+    MSMTP_BIN=$(command -v msmtp)
+    RECIPIENTS=$($PYTHON_BIN -c "import json; print(' '.join(r['email'] for r in json.load(open('$CONFIG_FILE'))['recipients'] if r.get('active', True)))")
+    if [ -n "$RECIPIENTS" ]; then
+      $PYTHON_BIN "$APP_DIR/scripts/generate_report.py" "$REPORT_DIR" "$CONFIG_FILE" "$REPORTS_DIR" | $MSMTP_BIN $RECIPIENTS
+    fi
   fi
 else
   echo "  Nothing to report, no email sent." >> "$LOGFILE"

@@ -284,6 +284,7 @@ function getMediaDirs() {
 // --- Cron Scheduler ---
 let cronJob = null;
 let scanJob = null;
+let emailJob = null;
 
 function setupCron() {
   const config = readConfig();
@@ -296,6 +297,100 @@ function setupCron() {
   });
   console.log(`[cron] Scheduled at ${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`);
   setupScanCron(config);
+  setupEmailCron(config);
+}
+
+function setupEmailCron(config) {
+  if (emailJob) emailJob.stop();
+  const eh = config.schedule?.emailHour;
+  const em = config.schedule?.emailMinute;
+  if (eh === undefined || eh === null || eh === '') return;
+  const emailHour = parseInt(eh, 10);
+  const emailMinute = parseInt(em, 10) || 0;
+  if (isNaN(emailHour) || emailHour < 0 || emailHour > 23) return;
+  emailJob = cron.schedule(`${emailMinute} ${emailHour} * * *`, () => {
+    console.log(`[email-cron] Sending daily report email at ${new Date().toISOString()}`);
+    sendDailyReportEmail();
+  });
+  console.log(`[email-cron] Email scheduled at ${String(emailHour).padStart(2,'0')}:${String(emailMinute).padStart(2,'0')}`);
+}
+
+async function sendDailyReportEmail() {
+  // Find the most recent report from the last 24 hours
+  try {
+    const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.json')).sort().reverse();
+    if (!files.length) { console.log('[email-cron] No reports found'); return; }
+
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    let latestReport = null;
+    for (const f of files) {
+      const m = f.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})\.json$/);
+      if (!m) continue;
+      const fileDate = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]), parseInt(m[4]), parseInt(m[5]), parseInt(m[6]));
+      if (fileDate >= yesterday) { latestReport = f; break; }
+    }
+    if (!latestReport) { console.log('[email-cron] No recent reports to email'); return; }
+
+    const config = readConfig();
+    const smtp = config.smtp;
+    if (!smtp || !smtp.host) { console.log('[email-cron] SMTP not configured'); return; }
+    const recipients = (config.recipients || []).filter(r => r.active !== false).map(r => r.email);
+    if (!recipients.length) { console.log('[email-cron] No active recipients'); return; }
+
+    // Reuse the resend logic
+    const report = JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, latestReport), 'utf8'));
+    const tmpDir = '/tmp/mkv_email_cron_report';
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    const mediaDirs = getMediaDirs();
+    const convertedLines = (report.converted || []).map(c => {
+      let mp4Path = c.mp4_path || '';
+      if (!mp4Path) {
+        for (const dir of mediaDirs) {
+          const dirName = path.basename(dir);
+          if (dirName.toLowerCase() === (c.section || '').toLowerCase()) {
+            try {
+              const found = execSync(`find "${dir}" -name "${c.basename.replace(/"/g, '')}.mp4" -type f 2>/dev/null | head -1`, { timeout: 5000 }).toString().trim();
+              if (found) { mp4Path = found; break; }
+            } catch {}
+          }
+        }
+      }
+      const parts = [c.section, c.basename, c.old_size, c.new_size, c.duration];
+      if (mp4Path) parts.push(mp4Path);
+      return parts.join('|');
+    });
+    fs.writeFileSync(path.join(tmpDir, 'converted.txt'), convertedLines.join('\n'));
+    fs.writeFileSync(path.join(tmpDir, 'failed.txt'), (report.failed || []).map(f => `${f.section}|${f.basename}|${f.size}`).join('\n'));
+    fs.writeFileSync(path.join(tmpDir, 'dupes.txt'), (report.dupes || []).map(d => `${d.section}|${d.name}`).join('\n'));
+    fs.writeFileSync(path.join(tmpDir, 'skipped_empty.txt'), String(report.skipped_empty || 0));
+
+    const env = { ...process.env, START_TIME: report.started || '', END_TIME: report.finished || '' };
+    const result = execSync(
+      `python3 "${path.join(APP_DIR, 'scripts', 'generate_report.py')}" "${tmpDir}" "${CONFIG_PATH}" "${REPORTS_DIR}"`,
+      { env, timeout: 60000 }
+    ).toString();
+
+    const htmlStart = result.indexOf('<html>');
+    const htmlBody = htmlStart >= 0 ? result.substring(htmlStart) : result;
+    let subject = 'AutoConvert Report';
+    const subjectMatch = result.match(/^Subject:\s*(.+)$/m);
+    if (subjectMatch) subject = subjectMatch[1].trim();
+
+    const from = smtp.from || 'noreply@autoconvert.local';
+    const transporter = nodemailer.createTransport({
+      host: smtp.host, port: smtp.port || 587,
+      secure: smtp.tls && !smtp.starttls,
+      auth: { user: smtp.user, pass: smtp.password },
+      tls: { rejectUnauthorized: false }
+    });
+    await transporter.sendMail({ from, to: recipients.join(', '), subject, html: htmlBody });
+    try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+    console.log(`[email-cron] Report emailed to ${recipients.join(', ')}`);
+  } catch (err) {
+    console.error(`[email-cron] Error: ${err.message}`);
+  }
 }
 
 function setupScanCron(config) {
@@ -355,6 +450,7 @@ function runConvertScript(excludeFiles = [], fileOrder = []) {
     REPORTS_DIR,
     MEDIA_DIRS: mediaDirs.join(':'),
     DELETE_ORIGINALS: autoDelete ? '1' : '0',
+    SKIP_EMAIL: (config.schedule?.emailHour !== undefined && config.schedule?.emailHour !== null && config.schedule?.emailHour !== '') ? '1' : '0',
     EXCLUDE_FILES: excludeFiles.join('\n'),
     FILE_ORDER: fileOrder.join('\n'),
     PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
@@ -755,11 +851,13 @@ app.get('/api/schedule', (req, res) => {
     hour: config.schedule?.hour ?? 3,
     minute: config.schedule?.minute ?? 0,
     scanInterval: config.schedule?.scanInterval ?? 0,
+    emailHour: config.schedule?.emailHour ?? '',
+    emailMinute: config.schedule?.emailMinute ?? 0,
   });
 });
 
 app.post('/api/schedule', (req, res) => {
-  const { hour, minute, scanInterval } = req.body;
+  const { hour, minute, scanInterval, emailHour, emailMinute } = req.body;
   const h = parseInt(hour, 10);
   const m = parseInt(minute, 10);
   const si = parseInt(scanInterval, 10) || 0;
@@ -768,9 +866,21 @@ app.post('/api/schedule', (req, res) => {
   }
   const config = readConfig();
   config.schedule = { hour: h, minute: m, scanInterval: si };
+  if (emailHour !== undefined && emailHour !== '') {
+    const eh = parseInt(emailHour, 10);
+    const em = parseInt(emailMinute, 10) || 0;
+    if (!isNaN(eh) && eh >= 0 && eh <= 23) {
+      config.schedule.emailHour = eh;
+      config.schedule.emailMinute = em;
+    }
+  } else {
+    // Empty = send immediately after conversion (no separate email schedule)
+    delete config.schedule.emailHour;
+    delete config.schedule.emailMinute;
+  }
   writeConfig(config);
   setupCron();
-  res.json({ ok: true, hour: h, minute: m, scanInterval: si });
+  res.json({ ok: true });
 });
 
 // Manual scan

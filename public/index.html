@@ -684,6 +684,17 @@
               <span>Every day at</span>
               <select id="schedHour"></select><span>:</span><select id="schedMin"></select>
             </div>
+            <div class="conv-section-label">Email report</div>
+            <p style="font-size:13px;color:#888;margin-bottom:10px;">When to send the daily report email. Set to "Immediately" to email right after conversion.</p>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px;">
+              <select id="schedEmailMode" onchange="toggleEmailTime(this.value)">
+                <option value="immediate">Immediately after conversion</option>
+                <option value="scheduled">At a specific time</option>
+              </select>
+              <span id="emailTimeWrap" style="display:none;">
+                <select id="schedEmailHour"></select><span>:</span><select id="schedEmailMin"></select>
+              </span>
+            </div>
             <div class="conv-section-label">Scan interval</div>
             <p style="font-size:13px;color:#888;margin-bottom:10px;">How often directories are scanned for new MKV files. New files automatically trigger a conversion.</p>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px;">
@@ -1324,12 +1335,38 @@ async function loadSchedule() {
     const s=Math.round(d.minute/5)*5;
     document.getElementById('schedMin').value=s>=60?55:s;
     document.getElementById('schedScanInterval').value=d.scanInterval||0;
+    // Email schedule
+    initEmailTimeSelects();
+    if(d.emailHour!==''&&d.emailHour!==undefined&&d.emailHour!==null){
+      document.getElementById('schedEmailMode').value='scheduled';
+      document.getElementById('emailTimeWrap').style.display='inline';
+      document.getElementById('schedEmailHour').value=d.emailHour;
+      document.getElementById('schedEmailMin').value=Math.round((d.emailMinute||0)/5)*5;
+    } else {
+      document.getElementById('schedEmailMode').value='immediate';
+      document.getElementById('emailTimeWrap').style.display='none';
+    }
   } catch {}
+}
+function initEmailTimeSelects() {
+  const eh=document.getElementById('schedEmailHour'), em=document.getElementById('schedEmailMin');
+  if(eh.options.length>0) return;
+  for(let i=0;i<24;i++){const o=document.createElement('option');o.value=i;o.textContent=String(i).padStart(2,'0');eh.appendChild(o);}
+  for(let i=0;i<60;i+=5){const o=document.createElement('option');o.value=i;o.textContent=String(i).padStart(2,'0');em.appendChild(o);}
+}
+function toggleEmailTime(mode) {
+  document.getElementById('emailTimeWrap').style.display=mode==='scheduled'?'inline':'none';
 }
 async function saveSchedule() {
   const hour=parseInt(document.getElementById('schedHour').value), minute=parseInt(document.getElementById('schedMin').value);
   const scanInterval=parseInt(document.getElementById('schedScanInterval').value)||0;
-  try { const res=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hour,minute,scanInterval})}); const d=await res.json(); if(d.ok) toast('Schedule saved'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
+  const emailMode=document.getElementById('schedEmailMode').value;
+  let emailHour='', emailMinute=0;
+  if(emailMode==='scheduled'){
+    emailHour=parseInt(document.getElementById('schedEmailHour').value);
+    emailMinute=parseInt(document.getElementById('schedEmailMin').value)||0;
+  }
+  try { const res=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hour,minute,scanInterval,emailHour,emailMinute})}); const d=await res.json(); if(d.ok) toast('Schedule saved'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
 }
 
 // --- Scan ---

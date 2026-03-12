@@ -1,6 +1,15 @@
 {
-  "version": "1.38",
+  "version": "1.39",
   "history": [
+    {
+      "version": "1.39",
+      "date": "2026-03-12 12:00",
+      "changes": [
+        "Separate email schedule: send report at a different time than conversion",
+        "Email cron job with configurable hour/minute",
+        "Conversion runs without sending email when email schedule is set"
+      ]
+    },
     {
       "version": "1.38",
       "date": "2026-03-12 10:00",
