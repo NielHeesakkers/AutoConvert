@@ -204,6 +204,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         loginItem.state = isLoginItemEnabled() ? .on : .off
         menu.addItem(loginItem)
 
+        let resetItem = NSMenuItem(title: "Reset Web Password…", action: #selector(resetWebPassword), keyEquivalent: "")
+        resetItem.target = self
+        menu.addItem(resetItem)
+
         menu.addItem(NSMenuItem.separator())
 
         let quitItem = NSMenuItem(title: "Quit AutoConvert", action: #selector(quitApp), keyEquivalent: "q")
@@ -529,6 +533,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    @objc private func resetWebPassword() {
+        let alert = NSAlert()
+        alert.messageText = "Reset Web Password"
+        alert.informativeText = "This will remove all users and disable authentication on the web interface. You can then set up a new account from the browser.\n\nContinue?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+
+        let usersPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/AutoConvert/users.json")
+        do {
+            try "[]".write(to: usersPath, atomically: true, encoding: .utf8)
+            let successAlert = NSAlert()
+            successAlert.messageText = "Password Reset"
+            successAlert.informativeText = "Authentication has been disabled. Open the web UI to set up a new account."
+            successAlert.alertStyle = .informational
+            successAlert.addButton(withTitle: "Open Web UI")
+            successAlert.addButton(withTitle: "OK")
+            let r = successAlert.runModal()
+            if r == .alertFirstButtonReturn {
+                let port = readPortFromConfig() ?? 3742
+                openWebUI(port: port)
+            }
+        } catch {
+            let errorAlert = NSAlert()
+            errorAlert.messageText = "Reset Failed"
+            errorAlert.informativeText = error.localizedDescription
+            errorAlert.alertStyle = .critical
+            errorAlert.runModal()
+        }
     }
 
     @objc private func quitApp() {

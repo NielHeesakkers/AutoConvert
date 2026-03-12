@@ -424,8 +424,8 @@
     [data-theme="light"] [style*="background: #2a2d3a"] { background: #e5e5ea !important; }
 
     /* Theme toggle button in sidebar */
-    [data-theme="light"] #themeToggle { border-color: #d1d1d6; color: #6e6e73; }
-    [data-theme="light"] #themeToggle:hover { background: #f0f0f2; color: #1d1d1f; }
+    [data-theme="light"] #themeToggle, [data-theme="light"] #logoutBtn { border-color: #d1d1d6; color: #6e6e73; }
+    [data-theme="light"] #themeToggle:hover, [data-theme="light"] #logoutBtn:hover { background: #f0f0f2; color: #1d1d1f; }
   </style>
 </head>
 <body>
@@ -445,6 +445,7 @@
     </ul>
     <div style="padding:8px 20px;">
       <button onclick="toggleTheme()" id="themeToggle" style="background:none;border:1px solid #2a2d3a;border-radius:8px;padding:6px 12px;color:#888;cursor:pointer;font-size:13px;width:100%;text-align:left;">&#9728;&#65039; Light mode</button>
+      <button onclick="doLogout()" id="logoutBtn" style="display:none;background:none;border:1px solid #2a2d3a;border-radius:8px;padding:6px 12px;color:#888;cursor:pointer;font-size:13px;width:100%;text-align:left;margin-top:4px;">&#128274; Logout</button>
     </div>
     <div class="sidebar-version" id="sidebarVersion">v1.0</div>
   </nav>
@@ -594,6 +595,58 @@
                 <input type="file" accept=".json" style="display:none;" onchange="importSettings(this)">
               </label>
             </div>
+          </div>
+          <div class="panel" style="margin-top:14px;" id="authPanel">
+            <div class="conv-section-label" style="margin-top:0;">&#128274; Authentication</div>
+            <p style="font-size:13px;color:#888;margin-bottom:14px;">Protect the web interface with a login. Reset via the macOS menu bar if you forget your password.</p>
+            <!-- No user configured -->
+            <div id="authSetup">
+              <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
+                <div class="form-group" style="flex:1;min-width:120px;">
+                  <label>Username</label>
+                  <input type="text" id="authNewUser" placeholder="admin" autocomplete="off">
+                </div>
+                <div class="form-group" style="flex:1;min-width:120px;">
+                  <label>Password</label>
+                  <input type="password" id="authNewPass" placeholder="••••" autocomplete="new-password">
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="authCreateUser()" style="margin-bottom:4px;">Enable login</button>
+              </div>
+            </div>
+            <!-- User exists -->
+            <div id="authManage" style="display:none;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                <span style="font-size:13px;color:#aaa;">Logged in as</span>
+                <span style="font-size:14px;font-weight:600;" id="authCurrentUser"></span>
+                <span style="margin-left:auto;font-size:11px;color:#4ade80;background:rgba(74,222,128,0.1);padding:2px 8px;border-radius:6px;">&#9679; Active</span>
+              </div>
+              <div style="border-top:1px solid #2a2d3a;padding-top:14px;">
+                <div class="conv-section-label" style="margin-top:0;">Change password</div>
+                <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
+                  <div class="form-group" style="flex:1;min-width:120px;">
+                    <label>Current password</label>
+                    <input type="password" id="authCurPass" autocomplete="current-password">
+                  </div>
+                  <div class="form-group" style="flex:1;min-width:120px;">
+                    <label>New password</label>
+                    <input type="password" id="authChgPass" autocomplete="new-password">
+                  </div>
+                  <button class="btn btn-primary btn-sm" onclick="authChangePass()" style="margin-bottom:4px;">Update</button>
+                </div>
+              </div>
+              <div style="border-top:1px solid #2a2d3a;padding-top:14px;margin-top:14px;">
+                <div class="conv-section-label" style="margin-top:0;">Disable authentication</div>
+                <p style="font-size:13px;color:#888;margin-bottom:10px;">Remove the login requirement. Enter your password to confirm.</p>
+                <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
+                  <div class="form-group" style="flex:1;min-width:160px;">
+                    <label>Password</label>
+                    <input type="password" id="authDelPass">
+                  </div>
+                  <button class="btn btn-danger-outline btn-sm" onclick="authDisable()" style="margin-bottom:4px;">Disable login</button>
+                </div>
+              </div>
+            </div>
+            <div id="authMsg" style="display:none;margin-top:10px;padding:8px 12px;border-radius:8px;font-size:13px;"></div>
           </div>
         </div>
 
@@ -1566,8 +1619,72 @@ async function loadVersion() {
   } catch { document.getElementById('changelogContainer').innerHTML='<div style="color:#555;">Could not load version history.</div>'; }
 }
 
+// --- Auth ---
+function loadAuthStatus() {
+  fetch('/api/auth/status').then(r=>r.json()).then(data=>{
+    const setupEl = document.getElementById('authSetup');
+    const manageEl = document.getElementById('authManage');
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (data.authEnabled && data.loggedIn) {
+      setupEl.style.display = 'none';
+      manageEl.style.display = 'block';
+      document.getElementById('authCurrentUser').textContent = data.user;
+      if (logoutBtn) logoutBtn.style.display = 'block';
+    } else {
+      setupEl.style.display = 'block';
+      manageEl.style.display = 'none';
+      if (logoutBtn) logoutBtn.style.display = 'none';
+    }
+  }).catch(()=>{});
+}
+function showAuthMsg(msg, ok) {
+  const el = document.getElementById('authMsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.style.background = ok ? 'rgba(74,222,128,0.1)' : 'rgba(239,68,68,0.1)';
+  el.style.border = ok ? '1px solid rgba(74,222,128,0.25)' : '1px solid rgba(239,68,68,0.25)';
+  el.style.color = ok ? '#4ade80' : '#ef4444';
+  setTimeout(()=>{ el.style.display = 'none'; }, 4000);
+}
+async function authCreateUser() {
+  const u = document.getElementById('authNewUser').value.trim();
+  const p = document.getElementById('authNewPass').value;
+  if (!u || !p) return showAuthMsg('Fill in both fields', false);
+  const r = await fetch('/api/auth/setup', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u,password:p}) });
+  const d = await r.json();
+  if (!r.ok) return showAuthMsg(d.error, false);
+  showAuthMsg('Login enabled! You are now signed in as ' + d.user, true);
+  loadAuthStatus();
+}
+async function authChangePass() {
+  const cur = document.getElementById('authCurPass').value;
+  const nw = document.getElementById('authChgPass').value;
+  if (!cur || !nw) return showAuthMsg('Fill in both fields', false);
+  const r = await fetch('/api/auth/change-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({currentPassword:cur,newPassword:nw}) });
+  const d = await r.json();
+  if (!r.ok) return showAuthMsg(d.error, false);
+  showAuthMsg('Password updated', true);
+  document.getElementById('authCurPass').value = '';
+  document.getElementById('authChgPass').value = '';
+}
+async function authDisable() {
+  const p = document.getElementById('authDelPass').value;
+  if (!p) return showAuthMsg('Enter your password to confirm', false);
+  const r = await fetch('/api/auth/delete-user', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:p}) });
+  const d = await r.json();
+  if (!r.ok) return showAuthMsg(d.error, false);
+  showAuthMsg('Authentication disabled', true);
+  document.getElementById('authDelPass').value = '';
+  loadAuthStatus();
+}
+async function doLogout() {
+  await fetch('/api/auth/logout', { method:'POST' });
+  window.location.href = '/';
+}
+
 // --- Init ---
 initScheduleSelects();
+loadAuthStatus();
 loadDiskSpace(); loadStatus(); loadDirectories(); loadSchedule(); loadSmtp(); loadPresets(); loadRecipients(); loadReports(); loadBackups(); loadVersion(); loadAppSettings();
 setInterval(()=>{ loadStatus(); if(isConvertRunning) loadProgress(); }, 3000);
 </script>

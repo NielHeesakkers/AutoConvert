@@ -1,11 +1,14 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync, spawn } = require('child_process');
 const cron = require('node-cron');
 const https = require('https');
 const net = require('net');
 const nodemailer = require('nodemailer');
+const bcrypt = require('bcryptjs');
+const session = require('express-session');
 
 // --- Mode & Paths ---
 const APP_MODE = process.env.AUTOCONVERT_APP === 'true';
@@ -16,6 +19,157 @@ const APP_DIR = __dirname;
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
+
+// --- Auth: Session & Users ---
+const USERS_PATH = APP_MODE
+  ? path.join(APP_SUPPORT, 'users.json')
+  : path.join(__dirname, 'users.json');
+
+// Generate or load persistent session secret
+const SECRET_PATH = APP_MODE
+  ? path.join(APP_SUPPORT, '.session-secret')
+  : path.join(__dirname, '.session-secret');
+function getSessionSecret() {
+  try { return fs.readFileSync(SECRET_PATH, 'utf8').trim(); } catch {}
+  const secret = crypto.randomBytes(48).toString('hex');
+  fs.mkdirSync(path.dirname(SECRET_PATH), { recursive: true });
+  fs.writeFileSync(SECRET_PATH, secret, { mode: 0o600 });
+  return secret;
+}
+
+app.use(session({
+  secret: getSessionSecret(),
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax' },
+  name: 'ac.sid',
+}));
+
+function readUsers() {
+  try { return JSON.parse(fs.readFileSync(USERS_PATH, 'utf8')); } catch {}
+  return [];
+}
+function writeUsers(users) {
+  fs.mkdirSync(path.dirname(USERS_PATH), { recursive: true });
+  fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 2), { mode: 0o600 });
+}
+function isAuthEnabled() { return readUsers().length > 0; }
+
+// Auth middleware — protects all /api/* except auth endpoints
+function requireAuth(req, res, next) {
+  // Auth endpoints are always accessible (path is relative to mount point /api)
+  if (req.path.startsWith('/auth/')) return next();
+  // If no users configured, skip auth
+  if (!isAuthEnabled()) return next();
+  // Check session
+  if (req.session && req.session.user) return next();
+  return res.status(401).json({ error: 'Not authenticated' });
+}
+app.use('/api', requireAuth);
+
+// Auth API endpoints
+app.get('/api/auth/status', (req, res) => {
+  const users = readUsers();
+  res.json({
+    authEnabled: users.length > 0,
+    loggedIn: !!(req.session && req.session.user),
+    user: req.session?.user || null,
+  });
+});
+
+app.post('/api/auth/setup', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+  if (password.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
+  const users = readUsers();
+  if (users.find(u => u.username === username)) return res.status(400).json({ error: 'User already exists' });
+  const hash = bcrypt.hashSync(password, 12);
+  users.push({ username, hash, createdAt: new Date().toISOString() });
+  writeUsers(users);
+  req.session.user = username;
+  res.json({ ok: true, user: username });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+  const users = readUsers();
+  const user = users.find(u => u.username === username);
+  if (!user || !bcrypt.compareSync(password, user.hash)) {
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+  req.session.user = username;
+  res.json({ ok: true, user: username });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie('ac.sid');
+    res.json({ ok: true });
+  });
+});
+
+app.post('/api/auth/change-password', (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!req.session?.user) return res.status(401).json({ error: 'Not authenticated' });
+  if (!newPassword || newPassword.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
+  const users = readUsers();
+  const user = users.find(u => u.username === req.session.user);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (!bcrypt.compareSync(currentPassword, user.hash)) return res.status(401).json({ error: 'Current password is incorrect' });
+  user.hash = bcrypt.hashSync(newPassword, 12);
+  writeUsers(users);
+  res.json({ ok: true });
+});
+
+app.post('/api/auth/delete-user', (req, res) => {
+  const { username, password } = req.body;
+  if (!req.session?.user) return res.status(401).json({ error: 'Not authenticated' });
+  let users = readUsers();
+  const user = users.find(u => u.username === (username || req.session.user));
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (!bcrypt.compareSync(password, user.hash)) return res.status(401).json({ error: 'Password is incorrect' });
+  users = users.filter(u => u.username !== user.username);
+  writeUsers(users);
+  if (user.username === req.session.user) {
+    req.session.destroy(() => {});
+  }
+  res.json({ ok: true, authDisabled: users.length === 0 });
+});
+
+// Reset endpoint — accepts a token written by the macOS menu bar app
+app.post('/api/auth/reset', (req, res) => {
+  const { token, newUsername, newPassword } = req.body;
+  const tokenPath = APP_MODE
+    ? path.join(APP_SUPPORT, '.reset-token')
+    : path.join(__dirname, '.reset-token');
+  try {
+    const storedToken = fs.readFileSync(tokenPath, 'utf8').trim();
+    if (!token || token !== storedToken) return res.status(403).json({ error: 'Invalid reset token' });
+    fs.unlinkSync(tokenPath); // one-time use
+  } catch {
+    return res.status(403).json({ error: 'No reset token found' });
+  }
+  if (!newUsername || !newPassword || newPassword.length < 4) {
+    return res.status(400).json({ error: 'Username and password (min 4 chars) required' });
+  }
+  const hash = bcrypt.hashSync(newPassword, 12);
+  writeUsers([{ username: newUsername, hash, createdAt: new Date().toISOString() }]);
+  res.json({ ok: true });
+});
+
+// Serve login page for unauthenticated users
+app.use((req, res, next) => {
+  // API requests handled above, this is for static files
+  if (req.path.startsWith('/api/')) return next();
+  // If auth not enabled, serve normally
+  if (!isAuthEnabled()) return next();
+  // If logged in, serve normally
+  if (req.session && req.session.user) return next();
+  // Serve login page
+  return res.sendFile(path.join(APP_DIR, 'public', 'login.html'));
+});
+
 app.use(express.static(path.join(APP_DIR, 'public')));
 
 const CONFIG_PATH = APP_MODE
