@@ -1605,7 +1605,7 @@ function renderReportDay(report, collapsed) {
   header.addEventListener('click',e=>{if(!e.target.closest('.report-day-delete'))div.classList.toggle('collapsed');});
   div.appendChild(header);
   const content=document.createElement('div'); content.className='report-day-content';
-  if(converted.length){content.innerHTML+='<div class="report-section-label">Converted</div>';converted.forEach(item=>content.appendChild(renderReportItem(item,'converted')));}
+  if(converted.length){content.innerHTML+='<div class="report-section-label">Converted</div>';converted.forEach(item=>{const el=renderReportItem(item,'converted');content.appendChild(el);if(!item.mp4_path&&item.section&&item.basename){fetch('/api/find-mp4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({section:item.section,basename:item.basename})}).then(r=>r.json()).then(d=>{if(d.mp4_path){const a=document.createElement('a');a.href='/api/download?path='+encodeURIComponent(d.mp4_path);a.className='report-download-btn';a.title='Download MP4';a.textContent='⬇';el.appendChild(a);}}).catch(()=>{});}});}
   if(failed.length){content.innerHTML+='<div class="report-section-label">Failed</div>';failed.forEach(item=>content.appendChild(renderReportItem(item,'failed')));}
   if(dupes.length){content.innerHTML+='<div class="report-section-label">Duplicates</div>';dupes.forEach(item=>{const d=document.createElement('div');d.className='report-dupe-item';const n=item.name||item.filename||JSON.stringify(item);d.innerHTML=`<span class="dupe-name" title="${escAttr(n)}">${escHtml(n)}</span>`;content.appendChild(d);});}
   if(!converted.length&&!failed.length&&!dupes.length) content.innerHTML='<div class="report-empty" style="padding:14px;">No items.</div>';

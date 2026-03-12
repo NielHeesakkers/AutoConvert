@@ -653,10 +653,24 @@ app.post('/api/reports/:filename/resend', async (req, res) => {
     const tmpDir = '/tmp/mkv_resend_report';
     fs.mkdirSync(tmpDir, { recursive: true });
 
-    // Write converted.txt
+    // Write converted.txt — reconstruct mp4_path for old reports
+    const mediaDirs = getMediaDirs();
     const convertedLines = (report.converted || []).map(c => {
+      let mp4Path = c.mp4_path || '';
+      if (!mp4Path) {
+        // Try to find MP4 by searching media dirs for section/basename.mp4
+        for (const dir of mediaDirs) {
+          const dirName = path.basename(dir);
+          if (dirName.toLowerCase() === (c.section || '').toLowerCase()) {
+            try {
+              const found = execSync(`find "${dir}" -name "${c.basename.replace(/"/g, '')}.mp4" -type f 2>/dev/null | head -1`, { timeout: 5000 }).toString().trim();
+              if (found) { mp4Path = found; break; }
+            } catch {}
+          }
+        }
+      }
       const parts = [c.section, c.basename, c.old_size, c.new_size, c.duration];
-      if (c.mp4_path) parts.push(c.mp4_path);
+      if (mp4Path) parts.push(mp4Path);
       return parts.join('|');
     });
     fs.writeFileSync(path.join(tmpDir, 'converted.txt'), convertedLines.join('\n'));
@@ -1358,6 +1372,24 @@ app.post('/api/app-settings', (req, res) => {
   }
   writeConfig(config);
   res.json({ ok: true, restart });
+});
+
+// --- Find MP4 path (for old reports without mp4_path) ---
+app.post('/api/find-mp4', (req, res) => {
+  const { section, basename } = req.body;
+  if (!section || !basename) return res.status(400).json({ error: 'section and basename required' });
+  const mediaDirs = getMediaDirs();
+  const safeName = basename.replace(/["`$\\]/g, '');
+  for (const dir of mediaDirs) {
+    const dirName = path.basename(dir);
+    if (dirName.toLowerCase() === section.toLowerCase()) {
+      try {
+        const found = execSync(`find "${dir}" -name "${safeName}.mp4" -type f 2>/dev/null | head -1`, { timeout: 5000 }).toString().trim();
+        if (found) return res.json({ mp4_path: found });
+      } catch {}
+    }
+  }
+  res.json({ mp4_path: null });
 });
 
 // --- File Download ---
