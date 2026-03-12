@@ -1796,13 +1796,13 @@ document.getElementById('resendModal').addEventListener('click',e=>{if(e.target.
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('resendModal').style.display==='flex')closeResendModal();});
 async function confirmResend() {
   if(!_resendId) return;
+  const id=_resendId, btn=_resendBtn;
   const email=document.getElementById('resendEmail').value.trim();
   closeResendModal();
-  const btn=_resendBtn;
   if(btn){btn.textContent='…';btn.disabled=true;}
   try {
     const body=email?{email}:{};
-    const res=await fetch(`/api/reports/${encodeURIComponent(_resendId)}/resend`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const res=await fetch(`/api/reports/${encodeURIComponent(id)}/resend`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await res.json();
     if(d.ok) {
       toast(`✓ Report sent to ${d.sentTo.join(', ')}`, false, 5000);

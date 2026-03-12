@@ -1,6 +1,13 @@
 {
-  "version": "1.43",
+  "version": "1.44",
   "history": [
+    {
+      "version": "1.44",
+      "date": "2026-03-12 19:00",
+      "changes": [
+        "Fix report resend: modal close was clearing filename before sending request"
+      ]
+    },
     {
       "version": "1.43",
       "date": "2026-03-12 18:00",
