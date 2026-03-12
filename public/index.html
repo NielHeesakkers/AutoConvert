@@ -597,6 +597,19 @@
             </div>
           </div>
           <div class="panel" style="margin-top:14px;">
+            <div class="conv-section-label" style="margin-top:0;">Download Notifications</div>
+            <p style="font-size:13px;color:#888;margin-bottom:10px;">Get an email when someone downloads a file via the download link.</p>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <span style="font-size:13px;">Send notifications</span>
+              <label class="toggle"><input type="checkbox" id="downloadNotifyToggle" onchange="saveDownloadNotify()"><span class="slider"></span></label>
+            </div>
+            <div class="conv-section-label">Admin Email</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:0;">
+              <input type="email" id="appAdminEmail" style="flex:1;" placeholder="admin@example.com">
+              <button class="btn btn-primary btn-sm" onclick="saveAdminEmail()">Save</button>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:14px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
               <span style="font-size:14px;font-weight:600;">Backups</span>
               <button class="btn btn-primary btn-sm" onclick="createBackup()">New backup</button>
@@ -1470,6 +1483,8 @@ async function loadAppSettings() {
     document.getElementById('appPort').value=d.port;
     document.getElementById('appBackupDir').value=d.backupDir||'';
     document.getElementById('appServerUrl').value=d.serverUrl||'';
+    document.getElementById('appAdminEmail').value=d.adminEmail||'';
+    document.getElementById('downloadNotifyToggle').checked=d.downloadNotify!==false;
     const ad=d.autoDelete!==false;
     document.getElementById('appAutoDelete').checked=ad;
     document.getElementById('autoDeleteWarning').style.display=ad?'block':'none';
@@ -1487,6 +1502,14 @@ async function toggleAutoDelete(on) {
 async function saveServerUrl() {
   const serverUrl=document.getElementById('appServerUrl').value.trim();
   try { const res=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({serverUrl})}); const d=await res.json(); if(d.ok) toast('Server URL saved'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
+}
+async function saveAdminEmail() {
+  const adminEmail=document.getElementById('appAdminEmail').value.trim();
+  try { const res=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({adminEmail})}); const d=await res.json(); if(d.ok) toast('Admin email saved'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
+}
+async function saveDownloadNotify() {
+  const downloadNotify=document.getElementById('downloadNotifyToggle').checked;
+  try { const res=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({downloadNotify})}); const d=await res.json(); if(d.ok) toast(downloadNotify?'Download notifications enabled':'Download notifications disabled'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
 }
 async function saveAppSettings() {
   const port=parseInt(document.getElementById('appPort').value,10);

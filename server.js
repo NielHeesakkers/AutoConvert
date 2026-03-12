@@ -948,7 +948,7 @@ app.get('/api/reports', (req, res) => {
     const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
     const page = files.slice(offset, offset + limit);
     const reports = page.map(f => {
-      try { return { filename: f, ...JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, f), 'utf8')) }; }
+      try { return { ...JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, f), 'utf8')), filename: f }; }
       catch { return { filename: f, error: 'Could not read report' }; }
     });
     res.json({ total, offset, limit, reports });
@@ -1431,6 +1431,8 @@ app.get('/api/app-settings', (req, res) => {
     backupDir: config.app?.backupDir || DEFAULT_BACKUP_DIR,
     autoDelete: config.app?.autoDelete !== false,
     serverUrl: config.serverUrl || '',
+    adminEmail: config.app?.adminEmail || '',
+    downloadNotify: config.app?.downloadNotify !== false,
   });
 });
 
@@ -1460,6 +1462,12 @@ app.post('/api/app-settings', (req, res) => {
   if (req.body.serverUrl !== undefined) {
     config.serverUrl = req.body.serverUrl.trim().replace(/\/+$/, '');
   }
+  if (req.body.adminEmail !== undefined) {
+    config.app.adminEmail = req.body.adminEmail.trim();
+  }
+  if (req.body.downloadNotify !== undefined) {
+    config.app.downloadNotify = !!req.body.downloadNotify;
+  }
   writeConfig(config);
   res.json({ ok: true, restart });
 });
@@ -1483,6 +1491,56 @@ app.post('/api/find-mp4', (req, res) => {
 });
 
 // --- File Download ---
+function sendDownloadNotification(filename, fileSize, ip, userAgent) {
+  try {
+    const config = readConfig();
+    if (!config.app?.downloadNotify) return;
+    const adminEmail = config.app?.adminEmail;
+    if (!adminEmail) return;
+    const smtp = config.smtp;
+    if (!smtp || !smtp.host) return;
+
+    const now = new Date().toLocaleString('en-US', { timeZone: 'Europe/Amsterdam' });
+    const sizeMB = (fileSize / (1024 * 1024)).toFixed(1);
+    // Try to identify the downloader from user-agent
+    const ua = userAgent || 'Unknown';
+    let device = 'Unknown device';
+    if (/iPhone/i.test(ua)) device = 'iPhone';
+    else if (/iPad/i.test(ua)) device = 'iPad';
+    else if (/Android/i.test(ua)) device = 'Android';
+    else if (/Mac OS/i.test(ua)) device = 'Mac';
+    else if (/Windows/i.test(ua)) device = 'Windows PC';
+    else if (/Linux/i.test(ua)) device = 'Linux';
+
+    const emailContent = [
+      `Content-Type: text/html; charset=utf-8`,
+      `Subject: Download: ${filename}`,
+      `From: ${smtp.from || 'noreply@autoconvert.local'}`,
+      `To: ${adminEmail}`,
+      ``,
+      `<html><body style="font-family:-apple-system,Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px;">`,
+      `<div style="background:#fff;border-radius:12px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">`,
+      `<h3 style="color:#6366f1;margin:0 0 16px;">⬇ File Downloaded</h3>`,
+      `<table style="font-size:14px;line-height:1.8;">`,
+      `<tr><td style="color:#888;padding-right:12px;">File</td><td><strong>${filename}</strong></td></tr>`,
+      `<tr><td style="color:#888;padding-right:12px;">Size</td><td>${sizeMB} MB</td></tr>`,
+      `<tr><td style="color:#888;padding-right:12px;">Time</td><td>${now}</td></tr>`,
+      `<tr><td style="color:#888;padding-right:12px;">Device</td><td>${device}</td></tr>`,
+      `<tr><td style="color:#888;padding-right:12px;">IP</td><td>${ip || 'Unknown'}</td></tr>`,
+      `</table>`,
+      `</div></body></html>`,
+    ].join('\n');
+    const msmtpPath = fs.existsSync(MSMTP_BIN) ? MSMTP_BIN : 'msmtp';
+    const tmpFile = '/tmp/autoconvert_dl_notify.txt';
+    fs.writeFileSync(tmpFile, emailContent);
+    execSync(`cat "${tmpFile}" | ${msmtpPath} ${adminEmail}`, { timeout: 15000 });
+    try { fs.unlinkSync(tmpFile); } catch {}
+    console.log(`[download] Notification sent to ${adminEmail} for ${filename}`);
+  } catch (err) {
+    console.error(`[download] Notification error: ${err.message}`);
+  }
+}
+
 app.get('/api/download', (req, res) => {
   const filePath = req.query.path;
   if (!filePath) return res.status(400).json({ error: 'Missing path parameter' });
@@ -1513,8 +1571,16 @@ app.get('/api/download', (req, res) => {
   const filename = path.basename(resolved);
   const stat = fs.statSync(resolved);
 
-  // Support range requests for large files (resume downloads)
+  // Send download notification to admin (async, don't block download)
+  const clientIp = req.headers['x-forwarded-for'] || req.ip || req.connection?.remoteAddress || '';
+  const userAgent = req.headers['user-agent'] || '';
+  // Only notify on initial request, not range continuations
   const range = req.headers.range;
+  if (!range) {
+    setImmediate(() => sendDownloadNotification(filename, stat.size, clientIp, userAgent));
+  }
+
+  // Support range requests for large files (resume downloads)
   if (range) {
     const parts = range.replace(/bytes=/, '').split('-');
     const start = parseInt(parts[0], 10);

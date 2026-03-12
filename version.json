@@ -1,6 +1,15 @@
 {
-  "version": "1.42",
+  "version": "1.43",
   "history": [
+    {
+      "version": "1.43",
+      "date": "2026-03-12 18:00",
+      "changes": [
+        "Admin email notification when someone downloads a file (device, IP, file info)",
+        "Download notification settings: admin email + toggle in Settings",
+        "Fix manual report resend 'Invalid filename' error"
+      ]
+    },
     {
       "version": "1.42",
       "date": "2026-03-12 17:00",
