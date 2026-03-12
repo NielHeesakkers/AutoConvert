@@ -372,20 +372,11 @@ async function sendDailyReportEmail() {
       { env, timeout: 60000 }
     ).toString();
 
-    const htmlStart = result.indexOf('<html>');
-    const htmlBody = htmlStart >= 0 ? result.substring(htmlStart) : result;
-    let subject = 'AutoConvert Report';
-    const subjectMatch = result.match(/^Subject:\s*(.+)$/m);
-    if (subjectMatch) subject = subjectMatch[1].trim();
-
-    const from = smtp.from || 'noreply@autoconvert.local';
-    const transporter = nodemailer.createTransport({
-      host: smtp.host, port: smtp.port || 587,
-      secure: smtp.tls && !smtp.starttls,
-      auth: { user: smtp.user, pass: smtp.password },
-      tls: { rejectUnauthorized: false }
-    });
-    await transporter.sendMail({ from, to: recipients.join(', '), subject, html: htmlBody });
+    // Send via msmtp (same as original conversion emails)
+    const msmtpPath = fs.existsSync(MSMTP_BIN) ? MSMTP_BIN : 'msmtp';
+    const emailFile = path.join(tmpDir, 'email.txt');
+    fs.writeFileSync(emailFile, result);
+    execSync(`cat "${emailFile}" | ${msmtpPath} ${recipients.join(' ')}`, { timeout: 30000 });
     try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
     console.log(`[email-cron] Report emailed to ${recipients.join(', ')}`);
   } catch (err) {
@@ -789,36 +780,22 @@ app.post('/api/reports/:filename/resend', async (req, res) => {
       END_TIME: report.finished || '',
     };
 
-    // Generate HTML via Python script
+    // Generate full email (with headers) via Python script
     const result = execSync(
       `python3 "${path.join(APP_DIR, 'scripts', 'generate_report.py')}" "${tmpDir}" "${CONFIG_PATH}" "${REPORTS_DIR}"`,
       { env, timeout: 60000 }
     ).toString();
 
-    // Extract HTML body (skip email headers)
-    const htmlStart = result.indexOf('<html>');
-    const htmlBody = htmlStart >= 0 ? result.substring(htmlStart) : result;
+    // Override To header for specific recipient and add (resend) to subject
+    let emailContent = result;
+    emailContent = emailContent.replace(/^Subject:\s*(.+)$/m, (m, subj) => `Subject: ${subj} (resend)`);
+    emailContent = emailContent.replace(/^To:\s*(.+)$/m, `To: ${recipients.join(', ')}`);
 
-    // Extract subject from headers
-    let subject = 'AutoConvert Report';
-    const subjectMatch = result.match(/^Subject:\s*(.+)$/m);
-    if (subjectMatch) subject = subjectMatch[1].trim();
-
-    // Send via nodemailer
-    const from = smtp.from || 'noreply@autoconvert.local';
-    const transporter = nodemailer.createTransport({
-      host: smtp.host,
-      port: smtp.port || 587,
-      secure: smtp.tls && !smtp.starttls,
-      auth: { user: smtp.user, pass: smtp.password },
-      tls: { rejectUnauthorized: false }
-    });
-    await transporter.sendMail({
-      from,
-      to: recipients.join(', '),
-      subject: subject + ' (resend)',
-      html: htmlBody,
-    });
+    // Send via msmtp (same as original conversion emails)
+    const msmtpPath = fs.existsSync(MSMTP_BIN) ? MSMTP_BIN : 'msmtp';
+    const emailFile = path.join(tmpDir, 'email.txt');
+    fs.writeFileSync(emailFile, emailContent);
+    execSync(`cat "${emailFile}" | ${msmtpPath} ${recipients.join(' ')}`, { timeout: 30000 });
 
     // Clean up tmp
     try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
