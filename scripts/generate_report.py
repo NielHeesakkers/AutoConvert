@@ -347,8 +347,9 @@ def generate_html(report_dir):
 </div>
 </body></html>""")
 
-    # Save JSON report with TMDB-enriched data
-    save_json_report(report_dir, converted_items, failed_items, dupes, skipped)
+    # Save JSON report with TMDB-enriched data (skip for resends)
+    if not os.environ.get("RESEND"):
+        save_json_report(report_dir, converted_items, failed_items, dupes, skipped)
 
     return "\n".join(html)
 

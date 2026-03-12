@@ -366,7 +366,7 @@ async function sendDailyReportEmail() {
     fs.writeFileSync(path.join(tmpDir, 'dupes.txt'), (report.dupes || []).map(d => `${d.section}|${d.name}`).join('\n'));
     fs.writeFileSync(path.join(tmpDir, 'skipped_empty.txt'), String(report.skipped_empty || 0));
 
-    const env = { ...process.env, START_TIME: report.started || '', END_TIME: report.finished || '' };
+    const env = { ...process.env, START_TIME: report.started || '', END_TIME: report.finished || '', RESEND: '1' };
     const result = execSync(
       `python3 "${path.join(APP_DIR, 'scripts', 'generate_report.py')}" "${tmpDir}" "${CONFIG_PATH}" "${REPORTS_DIR}"`,
       { env, timeout: 60000 }
@@ -778,6 +778,7 @@ app.post('/api/reports/:filename/resend', async (req, res) => {
       ...process.env,
       START_TIME: report.started || '',
       END_TIME: report.finished || '',
+      RESEND: '1',
     };
 
     // Generate full email (with headers) via Python script

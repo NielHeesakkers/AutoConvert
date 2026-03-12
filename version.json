@@ -1,6 +1,15 @@
 {
-  "version": "1.39",
+  "version": "1.40",
   "history": [
+    {
+      "version": "1.40",
+      "date": "2026-03-12 13:00",
+      "changes": [
+        "Fix resend email not arriving",
+        "Prevent duplicate JSON reports on resend",
+        "Improved error handling for email sending"
+      ]
+    },
     {
       "version": "1.39",
       "date": "2026-03-12 12:00",
