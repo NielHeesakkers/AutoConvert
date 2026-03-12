@@ -20,6 +20,47 @@ const APP_DIR = __dirname;
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
+// --- Rate Limiting ---
+const loginAttempts = new Map(); // IP -> { count, firstAttempt, lockedUntil }
+const RATE_LIMIT = { maxAttempts: 5, windowMs: 60 * 1000, lockoutMs: 5 * 60 * 1000 };
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry) return { allowed: true };
+  if (entry.lockedUntil && now < entry.lockedUntil) {
+    const remaining = Math.ceil((entry.lockedUntil - now) / 1000);
+    return { allowed: false, remaining };
+  }
+  if (now - entry.firstAttempt > RATE_LIMIT.windowMs) {
+    loginAttempts.delete(ip);
+    return { allowed: true };
+  }
+  if (entry.count >= RATE_LIMIT.maxAttempts) {
+    entry.lockedUntil = now + RATE_LIMIT.lockoutMs;
+    const remaining = Math.ceil(RATE_LIMIT.lockoutMs / 1000);
+    return { allowed: false, remaining };
+  }
+  return { allowed: true };
+}
+
+function recordFailedLogin(ip) {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip) || { count: 0, firstAttempt: now };
+  entry.count++;
+  loginAttempts.set(ip, entry);
+}
+
+function clearFailedLogins(ip) { loginAttempts.delete(ip); }
+
+// Clean up old entries every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of loginAttempts) {
+    if (now - entry.firstAttempt > RATE_LIMIT.lockoutMs + RATE_LIMIT.windowMs) loginAttempts.delete(ip);
+  }
+}, 10 * 60 * 1000);
+
 // --- Auth: Session & Users ---
 const USERS_PATH = APP_MODE
   ? path.join(APP_SUPPORT, 'users.json')
@@ -91,13 +132,20 @@ app.post('/api/auth/setup', (req, res) => {
 });
 
 app.post('/api/auth/login', (req, res) => {
+  const ip = req.ip || req.connection.remoteAddress;
+  const limit = checkRateLimit(ip);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: `Too many login attempts. Try again in ${limit.remaining} seconds.` });
+  }
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   const users = readUsers();
   const user = users.find(u => u.username === username);
   if (!user || !bcrypt.compareSync(password, user.hash)) {
+    recordFailedLogin(ip);
     return res.status(401).json({ error: 'Invalid username or password' });
   }
+  clearFailedLogins(ip);
   req.session.user = username;
   res.json({ ok: true, user: username });
 });
