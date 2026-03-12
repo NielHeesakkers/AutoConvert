@@ -1588,7 +1588,7 @@ function renderReportDay(report, collapsed) {
   const div=document.createElement('div'); div.className='report-day'+(collapsed?' collapsed':'');
   const converted=report.converted||[], failed=report.failed||[], dupes=report.dupes||[], date=report.date||'';
   const header=document.createElement('div'); header.className='report-day-header';
-  header.innerHTML=`<span class="report-day-chevron">&#9660;</span><span class="report-day-date">${escHtml(date)}</span><div class="report-day-badges">${converted.length?`<span class="report-summary-badge converted">${converted.length} converted</span>`:''}${failed.length?`<span class="report-summary-badge failed">${failed.length} failed</span>`:''}${dupes.length?`<span class="report-summary-badge dupes">${dupes.length} duplicates</span>`:''}</div><button class="report-day-delete" title="Delete" onclick="event.stopPropagation();deleteReport('${escAttr(report.filename||'')}',this)">&#128465;</button>`;
+  header.innerHTML=`<span class="report-day-chevron">&#9660;</span><span class="report-day-date">${escHtml(date)}</span><div class="report-day-badges">${converted.length?`<span class="report-summary-badge converted">${converted.length} converted</span>`:''}${failed.length?`<span class="report-summary-badge failed">${failed.length} failed</span>`:''}${dupes.length?`<span class="report-summary-badge dupes">${dupes.length} duplicates</span>`:''}</div><button class="report-day-delete" title="Resend email" onclick="event.stopPropagation();resendReport('${escAttr(report.filename||'')}',this)" style="color:#818cf8;">&#9993;</button><button class="report-day-delete" title="Delete" onclick="event.stopPropagation();deleteReport('${escAttr(report.filename||'')}',this)">&#128465;</button>`;
   header.addEventListener('click',e=>{if(!e.target.closest('.report-day-delete'))div.classList.toggle('collapsed');});
   div.appendChild(header);
   const content=document.createElement('div'); content.className='report-day-content';
@@ -1617,6 +1617,19 @@ function renderReportItem(item, type) {
   return div;
 }
 
+async function resendReport(id, btn) {
+  const email=prompt('Send report to (leave empty for all active recipients):','');
+  if(email===null) return;
+  btn.textContent='…'; btn.disabled=true;
+  try {
+    const body=email.trim()?{email:email.trim()}:{};
+    const res=await fetch(`/api/reports/${encodeURIComponent(id)}/resend`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await res.json();
+    if(d.ok) toast(`Report sent to ${d.sentTo.join(', ')}`);
+    else toast(d.error||'Error',true);
+  } catch { toast('Failed to send',true); }
+  btn.textContent='✉'; btn.disabled=false;
+}
 async function deleteReport(id, btn) {
   if(!confirm('Delete report?')) return;
   try { const res=await fetch(`/api/reports/${encodeURIComponent(id)}`,{method:'DELETE'}); const d=await res.json(); if(d.ok){btn.closest('.report-day').remove();toast('Deleted');}else toast(d.error||'Error',true); } catch { toast('Error',true); }

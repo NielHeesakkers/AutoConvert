@@ -624,6 +624,101 @@ app.post('/api/test-email', async (req, res) => {
   }
 });
 
+// Resend a report email
+app.post('/api/reports/:filename/resend', async (req, res) => {
+  const { filename } = req.params;
+  const { email } = req.body;
+  if (!/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.json$/.test(filename)) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+  const filepath = path.join(REPORTS_DIR, filename);
+  if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Report not found' });
+
+  const config = readConfig();
+  const smtp = config.smtp;
+  if (!smtp || !smtp.host) return res.status(400).json({ error: 'SMTP not configured' });
+
+  // Determine recipients
+  let recipients;
+  if (email) {
+    recipients = [email];
+  } else {
+    recipients = (config.recipients || []).filter(r => r.active !== false).map(r => r.email);
+  }
+  if (!recipients.length) return res.status(400).json({ error: 'No recipients' });
+
+  try {
+    // Recreate the report data files from JSON for the Python report generator
+    const report = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+    const tmpDir = '/tmp/mkv_resend_report';
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    // Write converted.txt
+    const convertedLines = (report.converted || []).map(c => {
+      const parts = [c.section, c.basename, c.old_size, c.new_size, c.duration];
+      if (c.mp4_path) parts.push(c.mp4_path);
+      return parts.join('|');
+    });
+    fs.writeFileSync(path.join(tmpDir, 'converted.txt'), convertedLines.join('\n'));
+
+    // Write failed.txt
+    const failedLines = (report.failed || []).map(f => `${f.section}|${f.basename}|${f.size}`);
+    fs.writeFileSync(path.join(tmpDir, 'failed.txt'), failedLines.join('\n'));
+
+    // Write dupes.txt
+    const dupeLines = (report.dupes || []).map(d => `${d.section}|${d.name}`);
+    fs.writeFileSync(path.join(tmpDir, 'dupes.txt'), dupeLines.join('\n'));
+
+    // Write skipped
+    fs.writeFileSync(path.join(tmpDir, 'skipped_empty.txt'), String(report.skipped_empty || 0));
+
+    // Set env vars for the report generator
+    const env = {
+      ...process.env,
+      START_TIME: report.started || '',
+      END_TIME: report.finished || '',
+    };
+
+    // Generate HTML via Python script
+    const result = execSync(
+      `python3 "${path.join(APP_DIR, 'scripts', 'generate_report.py')}" "${tmpDir}" "${CONFIG_PATH}" "${REPORTS_DIR}"`,
+      { env, timeout: 60000 }
+    ).toString();
+
+    // Extract HTML body (skip email headers)
+    const htmlStart = result.indexOf('<html>');
+    const htmlBody = htmlStart >= 0 ? result.substring(htmlStart) : result;
+
+    // Extract subject from headers
+    let subject = 'AutoConvert Report';
+    const subjectMatch = result.match(/^Subject:\s*(.+)$/m);
+    if (subjectMatch) subject = subjectMatch[1].trim();
+
+    // Send via nodemailer
+    const from = smtp.from || 'noreply@autoconvert.local';
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port || 587,
+      secure: smtp.tls && !smtp.starttls,
+      auth: { user: smtp.user, pass: smtp.password },
+      tls: { rejectUnauthorized: false }
+    });
+    await transporter.sendMail({
+      from,
+      to: recipients.join(', '),
+      subject: subject + ' (resend)',
+      html: htmlBody,
+    });
+
+    // Clean up tmp
+    try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+
+    res.json({ ok: true, sentTo: recipients });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Test SMTP connection
 app.post('/api/test-smtp', (req, res) => {
   const config = readConfig();
