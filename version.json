@@ -1,6 +1,17 @@
 {
-  "version": "1.41",
+  "version": "1.42",
   "history": [
+    {
+      "version": "1.42",
+      "date": "2026-03-12 17:00",
+      "changes": [
+        "Bundled HandBrakeCLI inside the app — no separate brew install needed",
+        "About tab in Settings: open source credits and Claude attribution",
+        "Download links in resent report emails now work correctly",
+        "Download endpoint no longer requires login (accessible from email links)",
+        "Better send confirmation: green checkmark + longer visible toast"
+      ]
+    },
     {
       "version": "1.41",
       "date": "2026-03-12 14:00",

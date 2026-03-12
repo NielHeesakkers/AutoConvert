@@ -84,6 +84,49 @@ if [ -f "$SCRIPT_DIR/Resources/AppIcon.icns" ]; then
     cp "$SCRIPT_DIR/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/"
 fi
 
+# Bundle HandBrakeCLI + its dylib dependencies
+echo "  Bundling HandBrakeCLI..."
+HB_BIN=$(realpath /opt/homebrew/bin/HandBrakeCLI 2>/dev/null || echo "/opt/homebrew/bin/HandBrakeCLI")
+if [ -f "$HB_BIN" ]; then
+    FRAMEWORKS_DIR="$APP_BUNDLE/Contents/Frameworks"
+    mkdir -p "$FRAMEWORKS_DIR"
+    cp "$HB_BIN" "$APP_BUNDLE/Contents/Resources/HandBrakeCLI"
+    chmod +x "$APP_BUNDLE/Contents/Resources/HandBrakeCLI"
+
+    # Copy all Homebrew dylibs and rewrite their paths
+    otool -L "$HB_BIN" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}' | while read -r dylib; do
+        DYLIB_REAL=$(realpath "$dylib" 2>/dev/null || echo "$dylib")
+        DYLIB_NAME=$(basename "$dylib")
+        cp "$DYLIB_REAL" "$FRAMEWORKS_DIR/$DYLIB_NAME"
+        chmod 644 "$FRAMEWORKS_DIR/$DYLIB_NAME"
+        # Rewrite the HandBrakeCLI reference to use @rpath
+        install_name_tool -change "$dylib" "@rpath/$DYLIB_NAME" "$APP_BUNDLE/Contents/Resources/HandBrakeCLI"
+    done
+
+    # Also resolve transitive dylib dependencies (dylibs that depend on other dylibs)
+    for fw_dylib in "$FRAMEWORKS_DIR"/*.dylib; do
+        otool -L "$fw_dylib" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}' | while read -r dep; do
+            DEP_REAL=$(realpath "$dep" 2>/dev/null || echo "$dep")
+            DEP_NAME=$(basename "$dep")
+            if [ ! -f "$FRAMEWORKS_DIR/$DEP_NAME" ]; then
+                cp "$DEP_REAL" "$FRAMEWORKS_DIR/$DEP_NAME"
+                chmod 644 "$FRAMEWORKS_DIR/$DEP_NAME"
+            fi
+            install_name_tool -change "$dep" "@rpath/$DEP_NAME" "$fw_dylib"
+        done
+        # Set the dylib's own id
+        install_name_tool -id "@rpath/$(basename "$fw_dylib")" "$fw_dylib"
+    done
+
+    # Add rpath to HandBrakeCLI
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE/Contents/Resources/HandBrakeCLI" 2>/dev/null || true
+
+    HB_DYLIB_COUNT=$(ls "$FRAMEWORKS_DIR"/*.dylib 2>/dev/null | wc -l | tr -d ' ')
+    echo "  ✓ HandBrakeCLI bundled with $HB_DYLIB_COUNT dylibs"
+else
+    echo "  ⚠ HandBrakeCLI not found — skipping bundle"
+fi
+
 # Remove node_modules/.bin symlinks (breaks code signing sealed resources)
 rm -rf "$APP_BUNDLE/Contents/Resources/server/node_modules/.bin"
 
@@ -101,6 +144,21 @@ echo "  Size: $APP_SIZE"
 echo "[5/7] Code signing..."
 
 ENTITLEMENTS="$SCRIPT_DIR/Resources/AutoConvert.entitlements"
+
+# Sign all Frameworks dylibs (HandBrakeCLI dependencies)
+find "$APP_BUNDLE/Contents/Frameworks" -name "*.dylib" -type f 2>/dev/null | while read -r lib; do
+    codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$lib"
+done
+FWCOUNT=$(find "$APP_BUNDLE/Contents/Frameworks" -name "*.dylib" -type f 2>/dev/null | wc -l | tr -d ' ')
+[ "$FWCOUNT" -gt 0 ] && echo "  ✓ Signed $FWCOUNT framework dylibs"
+
+# Sign HandBrakeCLI
+if [ -f "$APP_BUNDLE/Contents/Resources/HandBrakeCLI" ]; then
+    codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \
+        --entitlements "$ENTITLEMENTS" \
+        "$APP_BUNDLE/Contents/Resources/HandBrakeCLI"
+    echo "  ✓ HandBrakeCLI signed"
+fi
 
 # Sign all .dylib files in node_modules (inside-out)
 find "$APP_BUNDLE/Contents/Resources/server/node_modules" -name "*.dylib" -type f 2>/dev/null | while read -r lib; do

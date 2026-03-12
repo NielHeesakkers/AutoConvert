@@ -99,6 +99,8 @@ function isAuthEnabled() { return readUsers().length > 0; }
 function requireAuth(req, res, next) {
   // Auth endpoints are always accessible (path is relative to mount point /api)
   if (req.path.startsWith('/auth/')) return next();
+  // Download endpoint is public (secured by path validation + media dir check)
+  if (req.path === '/download') return next();
   // If no users configured, skip auth
   if (!isAuthEnabled()) return next();
   // Check session
@@ -443,7 +445,8 @@ function runConvertScript(excludeFiles = [], fileOrder = []) {
     SKIP_EMAIL: (config.schedule?.emailHour !== undefined && config.schedule?.emailHour !== null && config.schedule?.emailHour !== '') ? '1' : '0',
     EXCLUDE_FILES: excludeFiles.join('\n'),
     FILE_ORDER: fileOrder.join('\n'),
-    PATH: '/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+    PATH: `${path.join(APP_DIR, '..')}:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin`,
+    DYLD_LIBRARY_PATH: APP_MODE ? path.join(APP_DIR, '..', '..', 'Frameworks') : '',
   };
   console.log(`[convert] Starting script: ${SCRIPT_PATH}`);
   console.log(`[convert] Media dirs: ${mediaDirs.join(', ')}`);

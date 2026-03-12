@@ -84,10 +84,12 @@ class ServerManager {
         proc.executableURL = URL(fileURLWithPath: nodePath)
         proc.arguments = [serverJS]
         proc.currentDirectoryURL = URL(fileURLWithPath: serverDir)
+        let resourcesPath = bundle.resourcePath ?? ""
         proc.environment = ProcessInfo.processInfo.environment.merging([
             "AUTOCONVERT_APP": "true",
             "PORT": String(port),
-            "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+            "PATH": "\(resourcesPath):/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+            "DYLD_LIBRARY_PATH": (bundle.privateFrameworksPath ?? ""),
         ]) { _, new in new }
 
         proc.terminationHandler = { [weak self] process in
@@ -593,7 +595,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkHandBrakeCLI() {
-        let found = FileManager.default.fileExists(atPath: "/opt/homebrew/bin/HandBrakeCLI")
+        let bundledHB = (Bundle.main.resourcePath ?? "") + "/HandBrakeCLI"
+        let found = FileManager.default.fileExists(atPath: bundledHB) ||
+                     FileManager.default.fileExists(atPath: "/opt/homebrew/bin/HandBrakeCLI")
         if !found {
             DispatchQueue.main.async {
                 let alert = NSAlert()

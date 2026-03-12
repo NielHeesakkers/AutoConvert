@@ -194,6 +194,12 @@
     .report-item-filename { font-size: 12px; color: #888; word-break: break-all; }
     .report-download-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: rgba(99,102,241,0.15); color: #818cf8; font-size: 14px; text-decoration: none; flex-shrink: 0; align-self: center; transition: background 0.15s; }
     .report-download-btn:hover { background: rgba(99,102,241,0.3); }
+    .about-dep { padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; }
+    .about-dep-name { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+    .about-dep-name a { color: #818cf8; text-decoration: none; }
+    .about-dep-name a:hover { text-decoration: underline; }
+    .about-dep-desc { font-size: 12px; color: #888; line-height: 1.4; }
+    .about-dep-license { font-size: 11px; color: #666; margin-top: 4px; font-family: monospace; }
     .report-dupe-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #151820; border-radius: 6px; margin-bottom: 4px; font-size: 13px; color: #888; }
     .report-dupe-item .dupe-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .report-summary-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; color: #fff; }
@@ -344,6 +350,10 @@
     [data-theme="light"] .report-section-label { color: #8e8e93; border-bottom-color: #e5e5e7; }
     [data-theme="light"] .report-download-btn { background: rgba(99,102,241,0.1); color: #6366f1; }
     [data-theme="light"] .report-download-btn:hover { background: rgba(99,102,241,0.2); }
+    [data-theme="light"] .about-dep { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.08); }
+    [data-theme="light"] .about-dep-name a { color: #6366f1; }
+    [data-theme="light"] .about-dep-desc { color: #666; }
+    [data-theme="light"] .about-dep-license { color: #999; }
     [data-theme="light"] .report-item { background: #ffffff; border-left-color: transparent; }
     [data-theme="light"] .report-item.failed { background: rgba(239,68,68,0.05); }
     [data-theme="light"] .report-poster-placeholder { background: #e5e5ea; color: #aaa; }
@@ -552,6 +562,7 @@
           <div class="tab" data-tab="tab-schedule">Schedule</div>
           <div class="tab" data-tab="tab-smtp">Mail Server</div>
           <div class="tab" data-tab="tab-preset">HandBrake</div>
+          <div class="tab" data-tab="tab-about">About</div>
         </div>
 
         <!-- General -->
@@ -755,6 +766,81 @@
           </div>
         </div>
 
+        <!-- About -->
+        <div class="tab-content" id="tab-about">
+          <div class="panel">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;">
+              <div style="width:48px;height:48px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">🎬</div>
+              <div>
+                <div style="font-size:18px;font-weight:700;">AutoConvert</div>
+                <div style="font-size:13px;color:#888;" id="aboutVersion">v1.41</div>
+              </div>
+            </div>
+            <p style="font-size:13px;color:#999;line-height:1.6;margin:0 0 18px;">
+              Automatic MKV to MP4 conversion for macOS with HandBrakeCLI.<br>
+              Optimized for Apple Silicon.
+            </p>
+          </div>
+
+          <div class="panel" style="margin-top:14px;">
+            <div class="conv-section-label" style="margin-top:0;">Built with Claude</div>
+            <p style="font-size:13px;color:#999;line-height:1.6;margin:4px 0 0;">
+              This application was designed and built with <a href="https://claude.ai" target="_blank" style="color:#818cf8;text-decoration:none;font-weight:600;">Claude</a> by Anthropic — an AI assistant for coding, design and architecture.
+            </p>
+          </div>
+
+          <div class="panel" style="margin-top:14px;">
+            <div class="conv-section-label" style="margin-top:0;">Open Source Software</div>
+            <p style="font-size:12px;color:#888;margin:4px 0 12px;">AutoConvert relies on the following open source projects:</p>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div class="about-dep">
+                <div class="about-dep-name"><a href="https://handbrake.fr" target="_blank">HandBrakeCLI</a></div>
+                <div class="about-dep-desc">Video transcoder — converts MKV to MP4 using hardware-accelerated VideoToolbox</div>
+                <div class="about-dep-license">GPL-2.0</div>
+              </div>
+              <div class="about-dep">
+                <div class="about-dep-name"><a href="https://nodejs.org" target="_blank">Node.js</a></div>
+                <div class="about-dep-desc">JavaScript runtime powering the web server and conversion pipeline</div>
+                <div class="about-dep-license">MIT</div>
+              </div>
+              <div class="about-dep">
+                <div class="about-dep-name"><a href="https://expressjs.com" target="_blank">Express</a></div>
+                <div class="about-dep-desc">Fast, minimalist web framework for Node.js</div>
+                <div class="about-dep-license">MIT</div>
+              </div>
+              <div class="about-dep">
+                <div class="about-dep-name"><a href="https://www.themoviedb.org" target="_blank">TMDB API</a></div>
+                <div class="about-dep-desc">Movie & TV metadata, posters, ratings and episode info</div>
+                <div class="about-dep-license">Free API</div>
+              </div>
+              <div class="about-dep">
+                <div class="about-dep-name"><a href="https://marlam.de/msmtp/" target="_blank">msmtp</a></div>
+                <div class="about-dep-desc">Lightweight SMTP client for sending email reports</div>
+                <div class="about-dep-license">GPL-3.0</div>
+              </div>
+              <div class="about-dep">
+                <div class="about-dep-name"><a href="https://github.com/kelektiv/node.bcrypt.js" target="_blank">bcrypt.js</a></div>
+                <div class="about-dep-desc">Password hashing for secure authentication</div>
+                <div class="about-dep-license">MIT</div>
+              </div>
+              <div class="about-dep">
+                <div class="about-dep-name"><a href="https://github.com/node-cron/node-cron" target="_blank">node-cron</a></div>
+                <div class="about-dep-desc">Task scheduler for automated conversion schedules</div>
+                <div class="about-dep-license">ISC</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-top:14px;">
+            <div class="conv-section-label" style="margin-top:0;">Requirements</div>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+              <div style="font-size:13px;color:#ccc;">🖥 macOS 14.0+ (Sonoma) on Apple Silicon</div>
+              <div style="font-size:13px;color:#ccc;">🔧 HandBrakeCLI — bundled in app</div>
+              <div style="font-size:13px;color:#ccc;">📧 <code style="background:rgba(99,102,241,0.15);padding:2px 6px;border-radius:4px;font-size:12px;">brew install msmtp</code> (for email reports)</div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <!-- Versiegeschiedenis -->
@@ -849,7 +935,7 @@ function toggleSidebar() { document.getElementById('sidebar').classList.toggle('
 function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('show'); }
 
 // --- Helpers ---
-function toast(msg, error=false) { const el=document.getElementById('toast'); el.textContent=msg; el.className='toast show'+(error?' error':''); setTimeout(()=>el.className='toast',2500); }
+function toast(msg, error=false, duration=3500) { const el=document.getElementById('toast'); el.textContent=msg; el.className='toast show'+(error?' error':''); clearTimeout(el._tid); el._tid=setTimeout(()=>el.className='toast',duration); }
 function escHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function fmtBytes(b) { if(!b||b<=0)return '0 B'; const u=['B','KB','MB','GB','TB']; let i=0,s=b; while(s>=1024&&i<u.length-1){s/=1024;i++;} return s.toFixed(i===0?0:1)+' '+u[i]; }
@@ -1689,15 +1775,23 @@ async function confirmResend() {
   if(!_resendId) return;
   const email=document.getElementById('resendEmail').value.trim();
   closeResendModal();
-  if(_resendBtn){_resendBtn.textContent='…';_resendBtn.disabled=true;}
+  const btn=_resendBtn;
+  if(btn){btn.textContent='…';btn.disabled=true;}
   try {
     const body=email?{email}:{};
     const res=await fetch(`/api/reports/${encodeURIComponent(_resendId)}/resend`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await res.json();
-    if(d.ok) toast(`Report sent to ${d.sentTo.join(', ')}`);
-    else toast(d.error||'Error',true);
-  } catch { toast('Failed to send',true); }
-  if(_resendBtn){_resendBtn.textContent='✉';_resendBtn.disabled=false;}
+    if(d.ok) {
+      toast(`✓ Report sent to ${d.sentTo.join(', ')}`, false, 5000);
+      if(btn){btn.textContent='✓';btn.style.color='#22c55e';setTimeout(()=>{btn.textContent='✉';btn.style.color='';btn.disabled=false;},3000);}
+    } else {
+      toast(d.error||'Failed to send report',true);
+      if(btn){btn.textContent='✉';btn.disabled=false;}
+    }
+  } catch {
+    toast('Failed to send report',true);
+    if(btn){btn.textContent='✉';btn.disabled=false;}
+  }
 }
 async function deleteReport(id, btn) {
   if(!confirm('Delete report?')) return;
@@ -1713,6 +1807,7 @@ async function loadVersion() {
   try {
     const res=await fetch('/api/version'); const d=await res.json();
     document.getElementById('sidebarVersion').textContent='v'+d.version;
+    const aboutVer=document.getElementById('aboutVersion'); if(aboutVer) aboutVer.textContent='v'+d.version;
     const container=document.getElementById('changelogContainer');
     if(!d.history||!d.history.length){container.innerHTML='<div style="color:#555;">No version history.</div>';return;}
     container.innerHTML=d.history.map(v=>`<div class="version-entry"><div class="version-header"><span class="version-tag">v${escHtml(v.version)}</span><span class="version-date">${escHtml(v.date)}</span></div><ul class="version-changes">${(v.changes||[]).map(c=>`<li>${escHtml(c)}</li>`).join('')}</ul></div>`).join('');
