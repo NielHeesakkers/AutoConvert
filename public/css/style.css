@@ -25,7 +25,7 @@
     .main { flex: 1; margin-left: 220px; min-height: 100vh; }
     .main-header { padding: 24px 32px 0; }
     .main-title { font-size: 20px; font-weight: 700; color: #fff; }
-    .main-content { padding: 20px 32px 40px; max-width: 900px; }
+    .main-content { padding: 20px 32px 40px; }
     .section { display: none; }
     .section.active { display: block; }
 
