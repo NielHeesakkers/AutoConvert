@@ -1,6 +1,16 @@
 {
-  "version": "1.45",
+  "version": "1.46",
   "history": [
+    {
+      "version": "1.46",
+      "date": "2026-03-13",
+      "changes": [
+        "Click on failed items to see error details in a popup",
+        "Failure reasons captured from HandBrake log",
+        "Bash script marks reports as emailed after direct send (prevents duplicate emails)",
+        "Custom styled confirm dialogs replace native browser dialogs"
+      ]
+    },
     {
       "version": "1.45",
       "date": "2026-03-13",

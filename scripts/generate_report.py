@@ -174,7 +174,8 @@ def generate_html(report_dir):
         parts = line.split("|")
         if len(parts) < 3:
             continue
-        section, basename, size = parts
+        section, basename, size = parts[0], parts[1], parts[2]
+        reason = parts[3].strip() if len(parts) > 3 else ""
         title, year, media_type, season, episode = parse_title_year(basename)
 
         if season is not None and episode is not None:
@@ -185,7 +186,7 @@ def generate_html(report_dir):
             tmdb_cache[cache_key] = fetch_tmdb(title, year, media_type, season, episode)
 
         info = tmdb_cache[cache_key]
-        failed_items.append({"section": section, "basename": basename, "size": size, "info": info})
+        failed_items.append({"section": section, "basename": basename, "size": size, "reason": reason, "info": info})
 
     # Read config for From/To headers
     try:
@@ -399,7 +400,7 @@ def save_json_report(report_dir, converted_items, failed_items, dupes, skipped):
     failed_json = []
     for item in failed_items:
         info = item["info"]
-        failed_json.append({
+        entry = {
             "section": item["section"],
             "basename": item["basename"],
             "size": item["size"],
@@ -412,7 +413,10 @@ def save_json_report(report_dir, converted_items, failed_items, dupes, skipped):
                 "ep_label": info.get("ep_label", ""),
                 "ep_name": info.get("ep_name", ""),
             },
-        })
+        }
+        if item.get("reason"):
+            entry["reason"] = item["reason"]
+        failed_json.append(entry)
 
     dupes_json = []
     for line in dupes:

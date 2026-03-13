@@ -866,6 +866,39 @@
   <div class="toast" id="toast"></div>
 
   <!-- Resend Report Modal -->
+  <div id="confirmModal" style="display:none;position:fixed;inset:0;z-index:1001;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+    <div style="background:var(--card-bg,#1a1d28);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:16px;padding:32px;width:400px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.5);animation:modalIn .2s ease;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+        <div id="confirmIcon" style="width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;"></div>
+        <div>
+          <div id="confirmTitle" style="font-size:16px;font-weight:600;color:var(--text,#e0e0e0);"></div>
+          <div id="confirmDesc" style="font-size:13px;color:var(--text-dim,#888);margin-top:3px;line-height:1.4;"></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="resolveConfirm(false)" style="padding:9px 20px;border-radius:10px;border:1px solid var(--border,rgba(255,255,255,0.1));background:transparent;color:var(--text-dim,#888);font-size:13px;font-weight:500;cursor:pointer;transition:background .15s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">Cancel</button>
+        <button id="confirmActionBtn" onclick="resolveConfirm(true)" style="padding:9px 24px;border-radius:10px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'"></button>
+      </div>
+    </div>
+  </div>
+  <div id="failDetailModal" style="display:none;position:fixed;inset:0;z-index:1001;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+    <div style="background:var(--card-bg,#1a1d28);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:16px;padding:32px;width:520px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.5);animation:modalIn .2s ease;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <div style="width:40px;height:40px;border-radius:12px;background:rgba(239,68,68,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">&#10060;</div>
+        <div style="flex:1;min-width:0;">
+          <div id="failDetailTitle" style="font-size:16px;font-weight:600;color:var(--text,#e0e0e0);"></div>
+          <div id="failDetailMeta" style="font-size:12px;color:var(--text-dim,#888);margin-top:2px;"></div>
+        </div>
+      </div>
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:500;color:var(--text-dim,#999);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">Error Details</div>
+        <div id="failDetailReason" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:14px 16px;font-size:13px;color:#f87171;line-height:1.6;font-family:ui-monospace,SFMono-Regular,monospace;word-break:break-word;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;">
+        <button onclick="document.getElementById('failDetailModal').style.display='none'" style="padding:9px 24px;border-radius:10px;border:1px solid var(--border,rgba(255,255,255,0.1));background:transparent;color:var(--text-dim,#888);font-size:13px;font-weight:500;cursor:pointer;transition:background .15s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">Close</button>
+      </div>
+    </div>
+  </div>
   <div id="resendModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
     <div style="background:var(--card-bg,#1a1d28);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:16px;padding:32px;width:420px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.5);animation:modalIn .2s ease;">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
@@ -1768,6 +1801,7 @@ function renderReportDay(report, collapsed) {
 
 function renderReportItem(item, type) {
   const div=document.createElement('div'); div.className='report-item'+(type==='failed'?' failed':'');
+  if(type==='failed'){div.style.cursor='pointer';div.title='Click for details';}
   const tmdb=item.tmdb||{};
   const poster=tmdb.poster?`<img class="report-poster" src="${escAttr(tmdb.poster)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'report-poster-placeholder\\'>&#127910;</div>'">`:`<div class="report-poster-placeholder">&#127910;</div>`;
   const title=tmdb.title||item.basename||'Unknown';
@@ -1781,8 +1815,25 @@ function renderReportItem(item, type) {
   let fnHtml=''; if(type==='failed'&&item.basename) fnHtml=`<div class="report-item-filename">${escHtml(item.basename)}</div>`;
   let dlHtml=''; if(type==='converted'&&item.mp4_path) dlHtml=`<a href="/api/download?path=${encodeURIComponent(item.mp4_path)}" class="report-download-btn" title="Download MP4">⬇</a>`;
   div.innerHTML=`${poster}<div class="report-item-info"><div class="report-item-title">${escHtml(title)}${year}</div>${badges?`<div class="report-item-meta">${badges}</div>`:''}${sizeHtml}${durHtml?`<div class="report-item-meta">${durHtml}</div>`:''}${fnHtml}</div>${dlHtml}`;
+  if(type==='failed') div.addEventListener('click',()=>showFailDetail(item));
   return div;
 }
+
+function showFailDetail(item){
+  const tmdb=item.tmdb||{};
+  const title=tmdb.title||item.basename||'Unknown';
+  const year=tmdb.year?` (${tmdb.year})`:'';
+  document.getElementById('failDetailTitle').textContent=title+year;
+  const meta=[];
+  if(item.section) meta.push(item.section==='movies'?'Movie':'Series');
+  if(item.size) meta.push(item.size);
+  if(item.basename) meta.push(item.basename);
+  document.getElementById('failDetailMeta').textContent=meta.join(' · ');
+  document.getElementById('failDetailReason').textContent=item.reason||'No error details available. The conversion may have failed silently or the log was not captured.';
+  document.getElementById('failDetailModal').style.display='flex';
+}
+document.getElementById('failDetailModal').addEventListener('click',e=>{if(e.target.id==='failDetailModal')e.target.style.display='none';});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('failDetailModal').style.display==='flex')document.getElementById('failDetailModal').style.display='none';});
 
 let _resendId=null, _resendBtn=null;
 function resendReport(id, btn) {
@@ -1817,12 +1868,27 @@ async function confirmResend() {
     if(btn){btn.textContent='✉';btn.disabled=false;}
   }
 }
+let _confirmResolve=null;
+function showConfirm({title,desc,icon,iconBg,btnText,btnColor}){
+  document.getElementById('confirmTitle').textContent=title;
+  document.getElementById('confirmDesc').textContent=desc||'';
+  const ic=document.getElementById('confirmIcon'); ic.textContent=icon||'⚠️'; ic.style.background=iconBg||'rgba(239,68,68,0.15)';
+  const ab=document.getElementById('confirmActionBtn'); ab.textContent=btnText||'Confirm'; ab.style.background=btnColor||'#ef4444'; ab.style.color='#fff';
+  document.getElementById('confirmModal').style.display='flex';
+  return new Promise(r=>{_confirmResolve=r;});
+}
+function resolveConfirm(val){document.getElementById('confirmModal').style.display='none';if(_confirmResolve)_confirmResolve(val);_confirmResolve=null;}
+document.getElementById('confirmModal').addEventListener('click',e=>{if(e.target.id==='confirmModal')resolveConfirm(false);});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('confirmModal').style.display==='flex')resolveConfirm(false);});
+
 async function deleteReport(id, btn) {
-  if(!confirm('Delete report?')) return;
+  const ok=await showConfirm({title:'Delete Report',desc:'This report will be permanently removed.',icon:'🗑️',iconBg:'rgba(239,68,68,0.15)',btnText:'Delete',btnColor:'#ef4444'});
+  if(!ok) return;
   try { const res=await fetch(`/api/reports/${encodeURIComponent(id)}`,{method:'DELETE'}); const d=await res.json(); if(d.ok){btn.closest('.report-day').remove();toast('Deleted');}else toast(d.error||'Error',true); } catch { toast('Error',true); }
 }
 async function deleteAllLogs() {
-  if(!confirm('Clear all reports? This cannot be undone.')) return;
+  const ok=await showConfirm({title:'Clear All Reports',desc:'All reports will be permanently deleted. This cannot be undone.',icon:'⚠️',iconBg:'rgba(239,68,68,0.15)',btnText:'Clear All',btnColor:'#ef4444'});
+  if(!ok) return;
   try { const res=await fetch('/api/logs',{method:'DELETE'}); const d=await res.json(); if(d.ok){toast('Reports cleared');loadReports();}else toast(d.error||'Error',true); } catch { toast('Error',true); }
 }
 

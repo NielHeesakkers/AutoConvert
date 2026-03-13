@@ -280,8 +280,15 @@ with open('$PROGRESS_JSON', 'w') as f:
       CONV_STATUS="ok"
       CONV_NEWSIZE="$newsize"
     else
-      echo "${DIRNAME}|$(basename "$mkv")|${filesize}" >> "$REPORT_DIR/failed.txt"
-      echo "    FAILED" >> "$LOGFILE"
+      # Extract failure reason from HandBrake log (last meaningful error lines)
+      FAIL_REASON=""
+      if [ -f "$HB_LOG" ]; then
+        FAIL_REASON=$(grep -i 'error\|failed\|cannot\|invalid\|no valid\|unrecognized\|abort' "$HB_LOG" | tail -5 | tr '\n' ' ' | sed 's/|/;/g' | head -c 500)
+        [ -z "$FAIL_REASON" ] && FAIL_REASON=$(tail -3 "$HB_LOG" | tr '\n' ' ' | sed 's/|/;/g' | head -c 500)
+      fi
+      [ -z "$FAIL_REASON" ] && FAIL_REASON="HandBrakeCLI exited with code $RESULT"
+      echo "${DIRNAME}|$(basename "$mkv")|${filesize}|${FAIL_REASON}" >> "$REPORT_DIR/failed.txt"
+      echo "    FAILED: $FAIL_REASON" >> "$LOGFILE"
       CONV_STATUS="failed"
       CONV_NEWSIZE=""
     fi
@@ -336,6 +343,18 @@ if [ "$SUCCESS" -gt 0 ] || [ "$FAILED" -gt 0 ] || [ "$DUPES" -gt 0 ]; then
     RECIPIENTS=$($PYTHON_BIN -c "import json; print(' '.join(r['email'] for r in json.load(open('$CONFIG_FILE'))['recipients'] if r.get('active', True)))")
     if [ -n "$RECIPIENTS" ]; then
       $PYTHON_BIN "$APP_DIR/scripts/generate_report.py" "$REPORT_DIR" "$CONFIG_FILE" "$REPORTS_DIR" | $MSMTP_BIN $RECIPIENTS
+      # Mark report as emailed so the email cron doesn't re-send it
+      LATEST_RPT=$(ls -t "$REPORTS_DIR"/*.json 2>/dev/null | head -1)
+      if [ -n "$LATEST_RPT" ]; then
+        $PYTHON_BIN -c "
+import json, datetime
+with open('$LATEST_RPT') as f:
+    data = json.load(f)
+data['emailed'] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+with open('$LATEST_RPT', 'w') as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+"
+      fi
     fi
   fi
 else

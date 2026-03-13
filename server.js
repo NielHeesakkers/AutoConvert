@@ -367,7 +367,7 @@ async function sendDailyReportEmail() {
       return parts.join('|');
     });
     fs.writeFileSync(path.join(tmpDir, 'converted.txt'), convertedLines.join('\n'));
-    fs.writeFileSync(path.join(tmpDir, 'failed.txt'), (report.failed || []).map(f => `${f.section}|${f.basename}|${f.size}`).join('\n'));
+    fs.writeFileSync(path.join(tmpDir, 'failed.txt'), (report.failed || []).map(f => `${f.section}|${f.basename}|${f.size}${f.reason ? '|' + f.reason : ''}`).join('\n'));
     fs.writeFileSync(path.join(tmpDir, 'dupes.txt'), (report.dupes || []).map(d => `${d.section}|${d.name}`).join('\n'));
     fs.writeFileSync(path.join(tmpDir, 'skipped_empty.txt'), String(report.skipped_empty || 0));
 
@@ -775,7 +775,7 @@ app.post('/api/reports/:filename/resend', async (req, res) => {
     fs.writeFileSync(path.join(tmpDir, 'converted.txt'), convertedLines.join('\n'));
 
     // Write failed.txt
-    const failedLines = (report.failed || []).map(f => `${f.section}|${f.basename}|${f.size}`);
+    const failedLines = (report.failed || []).map(f => `${f.section}|${f.basename}|${f.size}${f.reason ? '|' + f.reason : ''}`);
     fs.writeFileSync(path.join(tmpDir, 'failed.txt'), failedLines.join('\n'));
 
     // Write dupes.txt

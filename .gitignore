@@ -10,3 +10,4 @@ macos-app/.node-cache/
 # Runtime files
 backups/
 reports/
+.session-secret
