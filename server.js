@@ -317,21 +317,25 @@ function setupEmailCron(config) {
 }
 
 async function sendDailyReportEmail() {
-  // Find the most recent report from the last 24 hours
+  // Only send email for new reports that haven't been emailed yet
   try {
     const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.json')).sort().reverse();
     if (!files.length) { console.log('[email-cron] No reports found'); return; }
 
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    // Find the most recent report that has conversions and hasn't been emailed yet
     let latestReport = null;
     for (const f of files) {
       const m = f.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})\.json$/);
       if (!m) continue;
-      const fileDate = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]), parseInt(m[4]), parseInt(m[5]), parseInt(m[6]));
-      if (fileDate >= yesterday) { latestReport = f; break; }
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, f), 'utf8'));
+        if (data.emailed) continue; // already sent
+        if (!(data.converted || []).length && !(data.failed || []).length) continue; // nothing to report
+        latestReport = f;
+        break;
+      } catch { continue; }
     }
-    if (!latestReport) { console.log('[email-cron] No recent reports to email'); return; }
+    if (!latestReport) { console.log('[email-cron] No new reports to email'); return; }
 
     const config = readConfig();
     const smtp = config.smtp;
@@ -379,6 +383,12 @@ async function sendDailyReportEmail() {
     fs.writeFileSync(emailFile, result);
     execSync(`cat "${emailFile}" | ${msmtpPath} ${recipients.join(' ')}`, { timeout: 30000 });
     try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+    // Mark report as emailed so we don't send it again
+    try {
+      const reportData = JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, latestReport), 'utf8'));
+      reportData.emailed = new Date().toISOString();
+      fs.writeFileSync(path.join(REPORTS_DIR, latestReport), JSON.stringify(reportData, null, 2));
+    } catch {}
     console.log(`[email-cron] Report emailed to ${recipients.join(', ')}`);
   } catch (err) {
     console.error(`[email-cron] Error: ${err.message}`);
@@ -802,6 +812,13 @@ app.post('/api/reports/:filename/resend', async (req, res) => {
 
     // Clean up tmp
     try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+
+    // Mark report as emailed
+    try {
+      const reportData = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+      reportData.emailed = new Date().toISOString();
+      fs.writeFileSync(filepath, JSON.stringify(reportData, null, 2));
+    } catch {}
 
     res.json({ ok: true, sentTo: recipients });
   } catch (err) {

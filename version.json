@@ -1,6 +1,15 @@
 {
-  "version": "1.44",
+  "version": "1.45",
   "history": [
+    {
+      "version": "1.45",
+      "date": "2026-03-13",
+      "changes": [
+        "Email cron only sends new reports (skips already-emailed and empty reports)",
+        "Show '✓ Sent' badge on reports that have been emailed",
+        "Manual resend also marks report as sent"
+      ]
+    },
     {
       "version": "1.44",
       "date": "2026-03-12 19:00",
