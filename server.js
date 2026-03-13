@@ -62,7 +62,7 @@ try { fs.mkdirSync(REPORTS_DIR, { recursive: true }); } catch {}
 try {
   const { getBackupDir } = require('./lib/config');
   fs.mkdirSync(getBackupDir(), { recursive: true });
-} catch {}
+} catch (e) { console.warn(`[init] Failed to create backup dir: ${e.message}`); }
 if (!fs.existsSync(LOG_PATH)) fs.writeFileSync(LOG_PATH, '');
 
 // Migrate default preset if needed
@@ -75,7 +75,7 @@ try {
       fs.copyFileSync(legacyPreset, defaultPreset);
     }
   }
-} catch {}
+} catch (e) { console.warn(`[init] Preset migration failed: ${e.message}`); }
 
 // Write msmtprc from config if smtp configured
 try {
@@ -83,7 +83,7 @@ try {
   if (config.smtp && config.smtp.host) {
     writeMsmtprc(config.smtp);
   }
-} catch {}
+} catch (e) { console.warn(`[init] Failed to write msmtprc: ${e.message}`); }
 
 // --- Mount routes ---
 app.use('/api/auth', require('./routes/auth'));

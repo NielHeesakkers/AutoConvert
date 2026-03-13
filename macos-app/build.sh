@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -14,6 +14,63 @@ NODE_CACHE="$SCRIPT_DIR/.node-cache"
 SIGN_IDENTITY="Developer ID Application: Niel Heesakkers (DE59N86W33)"
 KEYCHAIN_PROFILE="AC_PASSWORD"
 BUNDLE_ID="com.niel.autoconvert"
+
+# Cleanup temp files on exit
+trap 'rm -f "$BUILD_DIR"/.new_deps_*.txt' EXIT
+
+# --- Shared function: bundle a native binary with its dylib dependencies ---
+bundle_binary() {
+    local BIN_PATH="$1"
+    local DEST_NAME="$2"
+    local FW_DIR="$APP_BUNDLE/Contents/Frameworks"
+    mkdir -p "$FW_DIR"
+
+    cp "$BIN_PATH" "$APP_BUNDLE/Contents/Resources/$DEST_NAME"
+    chmod +x "$APP_BUNDLE/Contents/Resources/$DEST_NAME"
+
+    # Copy direct Homebrew dylibs and rewrite paths
+    while IFS= read -r dylib; do
+        local DYLIB_REAL
+        DYLIB_REAL=$(realpath "$dylib" 2>/dev/null || echo "$dylib")
+        local DYLIB_NAME
+        DYLIB_NAME=$(basename "$dylib")
+        if [ ! -f "$FW_DIR/$DYLIB_NAME" ]; then
+            cp "$DYLIB_REAL" "$FW_DIR/$DYLIB_NAME"
+            chmod 644 "$FW_DIR/$DYLIB_NAME"
+        fi
+        install_name_tool -change "$dylib" "@rpath/$DYLIB_NAME" "$APP_BUNDLE/Contents/Resources/$DEST_NAME"
+    done < <(otool -L "$BIN_PATH" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}')
+
+    # Recursively resolve transitive dependencies (max 10 passes)
+    local PASS=0
+    while [ "$PASS" -lt 10 ]; do
+        PASS=$((PASS + 1))
+        local DEP_FLAG="$BUILD_DIR/.new_deps_${DEST_NAME}.txt"
+        rm -f "$DEP_FLAG"
+
+        for fw_dylib in "$FW_DIR"/*.dylib; do
+            [ -f "$fw_dylib" ] || continue
+            while IFS= read -r dep; do
+                local DEP_REAL
+                DEP_REAL=$(realpath "$dep" 2>/dev/null || echo "$dep")
+                local DEP_NAME
+                DEP_NAME=$(basename "$dep")
+                if [ ! -f "$FW_DIR/$DEP_NAME" ]; then
+                    cp "$DEP_REAL" "$FW_DIR/$DEP_NAME"
+                    chmod 644 "$FW_DIR/$DEP_NAME"
+                    echo "1" >> "$DEP_FLAG"
+                fi
+                install_name_tool -change "$dep" "@rpath/$DEP_NAME" "$fw_dylib"
+            done < <(otool -L "$fw_dylib" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}')
+            install_name_tool -id "@rpath/$(basename "$fw_dylib")" "$fw_dylib"
+        done
+
+        [ -f "$DEP_FLAG" ] || break
+    done
+
+    install_name_tool -add_rpath "@executable_path/../Frameworks" \
+        "$APP_BUNDLE/Contents/Resources/$DEST_NAME" 2>/dev/null || true
+}
 
 echo "=== Building $APP_NAME.app ==="
 
@@ -90,55 +147,8 @@ fi
 echo "  Bundling HandBrakeCLI..."
 HB_BIN=$(realpath /opt/homebrew/bin/HandBrakeCLI 2>/dev/null || echo "/opt/homebrew/bin/HandBrakeCLI")
 if [ -f "$HB_BIN" ]; then
-    FRAMEWORKS_DIR="$APP_BUNDLE/Contents/Frameworks"
-    mkdir -p "$FRAMEWORKS_DIR"
-    cp "$HB_BIN" "$APP_BUNDLE/Contents/Resources/HandBrakeCLI"
-    chmod +x "$APP_BUNDLE/Contents/Resources/HandBrakeCLI"
-
-    # Copy all Homebrew dylibs and rewrite their paths
-    otool -L "$HB_BIN" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}' | while read -r dylib; do
-        DYLIB_REAL=$(realpath "$dylib" 2>/dev/null || echo "$dylib")
-        DYLIB_NAME=$(basename "$dylib")
-        cp "$DYLIB_REAL" "$FRAMEWORKS_DIR/$DYLIB_NAME"
-        chmod 644 "$FRAMEWORKS_DIR/$DYLIB_NAME"
-        # Rewrite the HandBrakeCLI reference to use @rpath
-        install_name_tool -change "$dylib" "@rpath/$DYLIB_NAME" "$APP_BUNDLE/Contents/Resources/HandBrakeCLI"
-    done
-
-    # Recursively resolve transitive dylib dependencies until no new ones are found
-    PASS=0
-    while true; do
-        PASS=$((PASS + 1))
-        NEW_DEPS=0
-        for fw_dylib in "$FRAMEWORKS_DIR"/*.dylib; do
-            otool -L "$fw_dylib" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}' | while read -r dep; do
-                DEP_REAL=$(realpath "$dep" 2>/dev/null || echo "$dep")
-                DEP_NAME=$(basename "$dep")
-                if [ ! -f "$FRAMEWORKS_DIR/$DEP_NAME" ]; then
-                    cp "$DEP_REAL" "$FRAMEWORKS_DIR/$DEP_NAME"
-                    chmod 644 "$FRAMEWORKS_DIR/$DEP_NAME"
-                    echo "NEW" >> /tmp/hb_new_deps.txt
-                fi
-                install_name_tool -change "$dep" "@rpath/$DEP_NAME" "$fw_dylib"
-            done
-            # Set the dylib's own id
-            install_name_tool -id "@rpath/$(basename "$fw_dylib")" "$fw_dylib"
-        done
-        if [ -f /tmp/hb_new_deps.txt ]; then
-            NEW_COUNT=$(wc -l < /tmp/hb_new_deps.txt | tr -d ' ')
-            rm -f /tmp/hb_new_deps.txt
-            [ "$NEW_COUNT" -eq 0 ] && break
-        else
-            break
-        fi
-        # Safety: max 10 passes
-        [ "$PASS" -ge 10 ] && break
-    done
-
-    # Add rpath to HandBrakeCLI
-    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE/Contents/Resources/HandBrakeCLI" 2>/dev/null || true
-
-    HB_DYLIB_COUNT=$(ls "$FRAMEWORKS_DIR"/*.dylib 2>/dev/null | wc -l | tr -d ' ')
+    bundle_binary "$HB_BIN" "HandBrakeCLI"
+    HB_DYLIB_COUNT=$(find "$APP_BUNDLE/Contents/Frameworks" -name "*.dylib" -type f 2>/dev/null | wc -l | tr -d ' ')
     echo "  ✓ HandBrakeCLI bundled with $HB_DYLIB_COUNT dylibs"
 else
     echo "  ⚠ HandBrakeCLI not found — skipping bundle"
@@ -148,51 +158,7 @@ fi
 echo "  Bundling msmtp..."
 MSMTP_BIN=$(realpath /opt/homebrew/bin/msmtp 2>/dev/null || echo "/opt/homebrew/bin/msmtp")
 if [ -f "$MSMTP_BIN" ]; then
-    FRAMEWORKS_DIR="$APP_BUNDLE/Contents/Frameworks"
-    mkdir -p "$FRAMEWORKS_DIR"
-    cp "$MSMTP_BIN" "$APP_BUNDLE/Contents/Resources/msmtp"
-    chmod +x "$APP_BUNDLE/Contents/Resources/msmtp"
-
-    # Copy all Homebrew dylibs and rewrite their paths
-    otool -L "$MSMTP_BIN" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}' | while read -r dylib; do
-        DYLIB_REAL=$(realpath "$dylib" 2>/dev/null || echo "$dylib")
-        DYLIB_NAME=$(basename "$dylib")
-        if [ ! -f "$FRAMEWORKS_DIR/$DYLIB_NAME" ]; then
-            cp "$DYLIB_REAL" "$FRAMEWORKS_DIR/$DYLIB_NAME"
-            chmod 644 "$FRAMEWORKS_DIR/$DYLIB_NAME"
-        fi
-        install_name_tool -change "$dylib" "@rpath/$DYLIB_NAME" "$APP_BUNDLE/Contents/Resources/msmtp"
-    done
-
-    # Resolve transitive dylib dependencies (reuses the same loop pattern)
-    MPASS=0
-    while true; do
-        MPASS=$((MPASS + 1))
-        rm -f /tmp/msmtp_new_deps.txt
-        for fw_dylib in "$FRAMEWORKS_DIR"/*.dylib; do
-            otool -L "$fw_dylib" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}' | while read -r dep; do
-                DEP_REAL=$(realpath "$dep" 2>/dev/null || echo "$dep")
-                DEP_NAME=$(basename "$dep")
-                if [ ! -f "$FRAMEWORKS_DIR/$DEP_NAME" ]; then
-                    cp "$DEP_REAL" "$FRAMEWORKS_DIR/$DEP_NAME"
-                    chmod 644 "$FRAMEWORKS_DIR/$DEP_NAME"
-                    echo "NEW" >> /tmp/msmtp_new_deps.txt
-                fi
-                install_name_tool -change "$dep" "@rpath/$DEP_NAME" "$fw_dylib"
-            done
-            install_name_tool -id "@rpath/$(basename "$fw_dylib")" "$fw_dylib"
-        done
-        if [ -f /tmp/msmtp_new_deps.txt ]; then
-            MNEW=$(wc -l < /tmp/msmtp_new_deps.txt | tr -d ' ')
-            rm -f /tmp/msmtp_new_deps.txt
-            [ "$MNEW" -eq 0 ] && break
-        else
-            break
-        fi
-        [ "$MPASS" -ge 10 ] && break
-    done
-
-    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE/Contents/Resources/msmtp" 2>/dev/null || true
+    bundle_binary "$MSMTP_BIN" "msmtp"
     echo "  ✓ msmtp bundled"
 else
     echo "  ⚠ msmtp not found — skipping bundle"
@@ -216,12 +182,14 @@ echo "[5/7] Code signing..."
 
 ENTITLEMENTS="$SCRIPT_DIR/Resources/AutoConvert.entitlements"
 
-# Sign all Frameworks dylibs (HandBrakeCLI dependencies)
-find "$APP_BUNDLE/Contents/Frameworks" -name "*.dylib" -type f 2>/dev/null | while read -r lib; do
-    codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$lib"
-done
+# Sign all Frameworks dylibs
 FWCOUNT=$(find "$APP_BUNDLE/Contents/Frameworks" -name "*.dylib" -type f 2>/dev/null | wc -l | tr -d ' ')
-[ "$FWCOUNT" -gt 0 ] && echo "  ✓ Signed $FWCOUNT framework dylibs"
+if [ "$FWCOUNT" -gt 0 ]; then
+    while IFS= read -r lib; do
+        codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$lib"
+    done < <(find "$APP_BUNDLE/Contents/Frameworks" -name "*.dylib" -type f)
+    echo "  ✓ Signed $FWCOUNT framework dylibs"
+fi
 
 # Sign HandBrakeCLI
 if [ -f "$APP_BUNDLE/Contents/Resources/HandBrakeCLI" ]; then
@@ -240,16 +208,16 @@ if [ -f "$APP_BUNDLE/Contents/Resources/msmtp" ]; then
 fi
 
 # Sign all .dylib files in node_modules (inside-out)
-find "$APP_BUNDLE/Contents/Resources/server/node_modules" -name "*.dylib" -type f 2>/dev/null | while read -r lib; do
+while IFS= read -r lib; do
     codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$lib"
     echo "  ✓ Signed: $(basename "$lib")"
-done
+done < <(find "$APP_BUNDLE/Contents/Resources/server/node_modules" -name "*.dylib" -type f 2>/dev/null)
 
 # Sign any .node native modules
-find "$APP_BUNDLE/Contents/Resources/server/node_modules" -name "*.node" -type f 2>/dev/null | while read -r mod; do
+while IFS= read -r mod; do
     codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$mod"
     echo "  ✓ Signed: $(basename "$mod")"
-done
+done < <(find "$APP_BUNDLE/Contents/Resources/server/node_modules" -name "*.node" -type f 2>/dev/null)
 
 # Sign the Node.js binary (embedded executable)
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \

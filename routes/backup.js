@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const {
   PRESETS_DIR, REPORTS_DIR,
   readConfig, writeConfig, getBackupDir,
@@ -62,7 +62,7 @@ router.post('/backups/reveal', (req, res) => {
   const { filename } = req.body;
   const target = filename ? path.join(getBackupDir(), filename) : getBackupDir();
   if (filename && !fs.existsSync(target)) return res.status(404).json({ error: 'File not found' });
-  try { execSync(`open -R "${target}"`); res.json({ ok: true }); }
+  try { execFileSync('open', ['-R', target]); res.json({ ok: true }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 

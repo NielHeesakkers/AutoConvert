@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const {
   REPORTS_DIR, APP_DIR, CONFIG_PATH, MSMTP_BIN,
   readConfig, getMediaDirs,
@@ -30,7 +30,7 @@ router.get('/stats', (req, res) => {
           totalOld += parseSizeToBytes(c.old_size);
           totalNew += parseSizeToBytes(c.new_size);
         }
-      } catch {}
+      } catch (e) { console.warn(`[reports] Failed to parse ${f}: ${e.message}`); }
     }
     res.json({ movies, series, totalOld, totalNew, saved: totalOld - totalNew, reports: files.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -102,7 +102,7 @@ router.post('/:filename/resend', async (req, res) => {
           const dirName = path.basename(dir);
           if (dirName.toLowerCase() === (c.section || '').toLowerCase()) {
             try {
-              const found = execSync(`find "${dir}" -name "${c.basename.replace(/"/g, '')}.mp4" -type f 2>/dev/null | head -1`, { timeout: 5000 }).toString().trim();
+              const found = execFileSync('find', [dir, '-name', `${c.basename}.mp4`, '-type', 'f'], { timeout: 5000 }).toString().trim().split('\n')[0];
               if (found) { mp4Path = found; break; }
             } catch {}
           }
@@ -118,10 +118,9 @@ router.post('/:filename/resend', async (req, res) => {
     fs.writeFileSync(path.join(tmpDir, 'skipped_empty.txt'), String(report.skipped_empty || 0));
 
     const env = { ...process.env, START_TIME: report.started || '', END_TIME: report.finished || '', RESEND: '1' };
-    const result = execSync(
-      `python3 "${path.join(APP_DIR, 'scripts', 'generate_report.py')}" "${tmpDir}" "${CONFIG_PATH}" "${REPORTS_DIR}"`,
-      { env, timeout: 60000 }
-    ).toString();
+    const result = execFileSync('python3', [
+      path.join(APP_DIR, 'scripts', 'generate_report.py'), tmpDir, CONFIG_PATH, REPORTS_DIR,
+    ], { env, timeout: 60000 }).toString();
 
     let emailContent = result;
     emailContent = emailContent.replace(/^Subject:\s*(.+)$/m, (m, subj) => `Subject: ${subj} (resend)`);
@@ -130,14 +129,14 @@ router.post('/:filename/resend', async (req, res) => {
     const msmtpPath = fs.existsSync(MSMTP_BIN) ? MSMTP_BIN : 'msmtp';
     const emailFile = path.join(tmpDir, 'email.txt');
     fs.writeFileSync(emailFile, emailContent);
-    execSync(`cat "${emailFile}" | ${msmtpPath} ${recipients.join(' ')}`, { timeout: 30000 });
+    execFileSync(msmtpPath, [...recipients], { input: fs.readFileSync(emailFile), timeout: 30000 });
     try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
 
     try {
       const reportData = JSON.parse(fs.readFileSync(filepath, 'utf8'));
       reportData.emailed = new Date().toISOString();
       fs.writeFileSync(filepath, JSON.stringify(reportData, null, 2));
-    } catch {}
+    } catch (e) { console.warn(`[reports] Failed to mark ${filename} as emailed: ${e.message}`); }
 
     res.json({ ok: true, sentTo: recipients });
   } catch (err) {

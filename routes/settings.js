@@ -2,7 +2,7 @@ const router = require('express').Router();
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const {
   LOG_PATH, REPORTS_DIR, MSMTP_BIN, DEFAULT_BACKUP_DIR, VERSION_FILE,
   readConfig, writeConfig, getMediaDirs,
@@ -113,10 +113,7 @@ router.post('/test-email', async (req, res) => {
       `</div></body></html>`
     ].join('\n');
     const msmtpPath = fs.existsSync(MSMTP_BIN) ? MSMTP_BIN : 'msmtp';
-    const tmpFile = '/tmp/autoconvert_test_email.txt';
-    fs.writeFileSync(tmpFile, emailContent);
-    execSync(`cat "${tmpFile}" | ${msmtpPath} ${email}`, { timeout: 30000 });
-    try { fs.unlinkSync(tmpFile); } catch {}
+    execFileSync(msmtpPath, [email], { input: emailContent, timeout: 30000 });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -206,7 +203,7 @@ router.delete('/logs', (req, res) => {
 // Disk Space
 function getDiskSpace(dirPath) {
   try {
-    const output = execSync('df -k "' + dirPath + '"', { timeout: 5000 }).toString();
+    const output = execFileSync('df', ['-k', dirPath], { timeout: 5000 }).toString();
     const lines = output.trim().split('\n');
     if (lines.length < 2) return null;
     const parts = lines[1].trim().split(/\s+/);
@@ -340,7 +337,10 @@ router.post('/choose-directory', (req, res) => {
     ? `POSIX path of (choose folder with prompt "Select folder" default location POSIX file "${def}")`
     : `POSIX path of (choose folder with prompt "Select folder")`;
   try {
-    const result = execSync(`osascript -e 'tell application "System Events" to activate' -e '${choose}'`, { timeout: 60000 }).toString().trim();
+    const result = execFileSync('osascript', [
+      '-e', 'tell application "System Events" to activate',
+      '-e', choose,
+    ], { timeout: 60000 }).toString().trim();
     res.json({ ok: true, path: result });
   } catch (err) {
     if (err.status === 1 || err.stderr?.toString().includes('User canceled')) return res.json({ ok: false, canceled: true });

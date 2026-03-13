@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const {
   LOG_PATH, LOCK_FILE, PROGRESS_FILE, HB_LOG_FILE, MSMTP_BIN,
   readConfig, getMediaDirs, getActivePresetFile,
@@ -129,12 +129,11 @@ router.post('/find-mp4', (req, res) => {
   const { section, basename } = req.body;
   if (!section || !basename) return res.status(400).json({ error: 'section and basename required' });
   const mediaDirs = getMediaDirs();
-  const safeName = basename.replace(/["`$\\]/g, '');
   for (const dir of mediaDirs) {
     const dirName = path.basename(dir);
     if (dirName.toLowerCase() === section.toLowerCase()) {
       try {
-        const found = execSync(`find "${dir}" -name "${safeName}.mp4" -type f 2>/dev/null | head -1`, { timeout: 5000 }).toString().trim();
+        const found = execFileSync('find', [dir, '-name', `${basename}.mp4`, '-type', 'f'], { timeout: 5000 }).toString().trim().split('\n')[0];
         if (found) return res.json({ mp4_path: found });
       } catch {}
     }
@@ -182,10 +181,7 @@ function sendDownloadNotification(filename, fileSize, ip, userAgent) {
       `</div></body></html>`,
     ].join('\n');
     const msmtpPath = fs.existsSync(MSMTP_BIN) ? MSMTP_BIN : 'msmtp';
-    const tmpFile = '/tmp/autoconvert_dl_notify.txt';
-    fs.writeFileSync(tmpFile, emailContent);
-    execSync(`cat "${tmpFile}" | ${msmtpPath} ${adminEmail}`, { timeout: 15000 });
-    try { fs.unlinkSync(tmpFile); } catch {}
+    execFileSync(msmtpPath, [adminEmail], { input: Buffer.from(emailContent), timeout: 15000 });
     console.log(`[download] Notification sent to ${adminEmail} for ${filename}`);
   } catch (err) {
     console.error(`[download] Notification error: ${err.message}`);

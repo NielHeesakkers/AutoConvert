@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const {
   PRESETS_DIR,
   readConfig, writeConfig, getActivePresetFile, readPresetDetails,
@@ -87,7 +87,7 @@ router.get('/presets/:filename/download', (req, res) => {
 // HandBrake info
 router.get('/handbrake/encoders', (req, res) => {
   try {
-    const output = execSync('HandBrakeCLI --help 2>&1', { timeout: 10000 }).toString();
+    const output = execFileSync('HandBrakeCLI', ['--help'], { timeout: 10000 }).toString();
     const video = [], audio = [];
     const vSection = output.match(/--encoder <string>[\s\S]*?(?=\s+--encoder-preset)/);
     if (vSection) {
