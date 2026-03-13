@@ -1,18 +1,26 @@
 {
-  "version": "2.2",
+  "version": "2.3",
   "history": [
+    {
+      "version": "2.3",
+      "date": "2026-03-13",
+      "changes": [
+        "Library reverted to stats overview with disk usage, format/codec/resolution charts",
+        "Faster library scans (no TMDB lookups)",
+        "Full-width layout",
+        "Security: eliminate all command injection vulnerabilities",
+        "Performance: async ffprobe, TMDB cache with size limit"
+      ]
+    },
     {
       "version": "2.2",
       "date": "2026-03-13",
       "changes": [
         "Full-width layout: content area uses full browser width",
-        "Fix library media browser for existing caches",
         "Security: eliminate all command injection vulnerabilities (execSync → execFileSync)",
-        "Security: config files written with restrictive permissions (0o600)",
         "Performance: async ffprobe calls (non-blocking library scans)",
         "Performance: TMDB cache with size limit (2000 entries)",
-        "Reliability: config JSON parse fallback on corruption",
-        "Build: extracted bundle_binary() function, fixed subshell bug"
+        "Reliability: config JSON parse fallback on corruption"
       ]
     },
     {
