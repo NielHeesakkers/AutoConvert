@@ -16,9 +16,9 @@
     </div>
     <ul class="sidebar-nav" id="sidebarNav">
       <li><a data-section="convert" class="active"><span class="nav-icon">&#9654;</span> Conversion</a></li>
+      <li><a data-section="library"><span class="nav-icon">&#128218;</span> Library</a></li>
       <li><a data-section="reports"><span class="nav-icon">&#128202;</span> Reports</a></li>
       <li><a data-section="recipients"><span class="nav-icon">&#128101;</span> Recipients</a></li>
-      <li><a data-section="library"><span class="nav-icon">&#128218;</span> Library</a></li>
       <li><a data-section="settings"><span class="nav-icon">&#9881;</span> Settings</a></li>
       <li><a data-section="changelog"><span class="nav-icon">&#128203;</span> Version History</a></li>
     </ul>
@@ -131,6 +131,21 @@
           <div class="progress-bar"><div class="progress-bar-fill" id="libProgressBar" style="width:0%"></div></div>
           <div class="progress-label" id="libProgressLabel">Scanning...</div>
         </div>
+        <!-- Media Browser -->
+        <div id="libMediaBrowser" style="display:none;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div class="conv-section-label" style="margin:0;">Media Library</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="text" id="libMediaSearch" placeholder="Search..." style="padding:6px 12px;font-size:13px;width:200px;" oninput="filterLibraryMedia()">
+              <select id="libMediaFilter" onchange="filterLibraryMedia()" style="padding:6px 8px;font-size:13px;">
+                <option value="all">All</option>
+                <option value="movie">Movies</option>
+                <option value="tv">Series</option>
+              </select>
+            </div>
+          </div>
+          <div id="libMediaGrid" class="lib-media-grid"></div>
+        </div>
         <!-- Summary cards -->
         <div id="libSummary" style="display:none;margin-bottom:16px;">
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
@@ -185,9 +200,6 @@
           <div class="tab active" data-tab="tab-general">General</div>
           <div class="tab" data-tab="tab-dirs">Media</div>
           <div class="tab" data-tab="tab-schedule">Schedule</div>
-          <div class="tab" data-tab="tab-watch">Watch</div>
-          <div class="tab" data-tab="tab-plex">Plex</div>
-          <div class="tab" data-tab="tab-subs">Subtitles</div>
           <div class="tab" data-tab="tab-smtp">Mail Server</div>
           <div class="tab" data-tab="tab-preset">HandBrake</div>
           <div class="tab" data-tab="tab-logs">Logs</div>
@@ -316,7 +328,7 @@
           </div>
         </div>
 
-        <!-- Mappen -->
+        <!-- Media: Directories + Plex + Subtitles -->
         <div class="tab-content" id="tab-dirs">
           <p style="font-size:13px;color:#888;margin-bottom:14px;">These directories are scanned for MKV files to convert.</p>
           <div id="dirContainer"><div class="panel" style="color:#555;">Loading...</div></div>
@@ -327,9 +339,72 @@
               <button class="btn btn-primary btn-sm" onclick="addMediaDir()">Add</button>
             </div>
           </div>
+
+          <!-- Plex -->
+          <div class="panel" style="margin-top:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <div>
+                <div class="conv-section-label" style="margin-top:0;">Plex Library Refresh</div>
+                <p style="font-size:13px;color:#888;margin:2px 0 0;">Automatically refresh Plex libraries after conversion completes.</p>
+              </div>
+              <label class="toggle"><input type="checkbox" id="plexEnabled" onchange="togglePlex(this.checked)"><span class="slider"></span></label>
+            </div>
+            <div id="plexStatus" style="margin-bottom:14px;padding:10px 14px;border-radius:10px;font-size:13px;display:none;"></div>
+            <div class="conv-section-label">Server URL</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <input type="text" id="plexUrl" style="flex:1;" placeholder="http://localhost:32400">
+            </div>
+            <div class="conv-section-label">Plex Token</div>
+            <p style="font-size:13px;color:#888;margin-bottom:8px;">Find your token in Plex settings or <a href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" style="color:#818cf8;">see instructions</a>.</p>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <input type="password" id="plexToken" style="flex:1;" placeholder="Your Plex token">
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+              <button class="btn btn-primary btn-sm" onclick="savePlexConfig()">Save</button>
+              <button class="btn btn-ghost btn-sm" onclick="testPlexConnection()">Test Connection</button>
+              <button class="btn btn-ghost btn-sm" onclick="manualPlexRefresh()">Refresh Now</button>
+              <span id="plexTestResult" style="font-size:12px;display:none;"></span>
+            </div>
+            <div id="plexLibraries" style="display:none;">
+              <div class="conv-section-label">Libraries</div>
+              <p style="font-size:13px;color:#888;margin-bottom:10px;">Select which libraries to refresh. Leave all unchecked to refresh all.</p>
+              <div id="plexLibraryList"></div>
+            </div>
+          </div>
+
+          <!-- Subtitles -->
+          <div class="panel" style="margin-top:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <div>
+                <div class="conv-section-label" style="margin-top:0;">Automatic Subtitles</div>
+                <p style="font-size:13px;color:#888;margin:2px 0 0;">Download subtitles automatically after conversion using OpenSubtitles.</p>
+              </div>
+              <label class="toggle"><input type="checkbox" id="subsEnabled" onchange="toggleSubtitles(this.checked)"><span class="slider"></span></label>
+            </div>
+            <div class="conv-section-label">API Key</div>
+            <p style="font-size:13px;color:#888;margin-bottom:8px;">Get a free API key at <a href="https://www.opensubtitles.com/consumers" target="_blank" style="color:#818cf8;">opensubtitles.com</a>.</p>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <input type="password" id="subsApiKey" style="flex:1;" placeholder="Your OpenSubtitles API key">
+            </div>
+            <div class="conv-section-label">Languages</div>
+            <p style="font-size:13px;color:#888;margin-bottom:10px;">Select which subtitle languages to download.</p>
+            <div id="subsLanguages" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="nl" class="subs-lang" checked> Dutch (NL)</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="en" class="subs-lang" checked> English (EN)</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="de" class="subs-lang"> German (DE)</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="fr" class="subs-lang"> French (FR)</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="es" class="subs-lang"> Spanish (ES)</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="pt" class="subs-lang"> Portuguese (PT)</label>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" onclick="saveSubsConfig()">Save</button>
+              <button class="btn btn-ghost btn-sm" onclick="testSubsKey()">Test API Key</button>
+              <span id="subsTestResult" style="font-size:12px;display:none;"></span>
+            </div>
+          </div>
         </div>
 
-        <!-- Planning -->
+        <!-- Schedule: Daily conversion + Folder Watch -->
         <div class="tab-content" id="tab-schedule">
           <div class="panel">
             <div class="conv-section-label" style="margin-top:0;">Daily conversion</div>
@@ -365,11 +440,9 @@
             </div>
             <button class="btn btn-primary btn-sm" onclick="saveSchedule()">Save</button>
           </div>
-        </div>
 
-        <!-- Folder Watch -->
-        <div class="tab-content" id="tab-watch">
-          <div class="panel">
+          <!-- Folder Watch -->
+          <div class="panel" style="margin-top:18px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
               <div>
                 <div class="conv-section-label" style="margin-top:0;">Folder Watch</div>
@@ -389,75 +462,8 @@
               <div class="conv-section-label" style="margin-top:0;">How it works</div>
               <div style="font-size:13px;color:#888;line-height:1.7;">
                 When enabled, AutoConvert watches all configured media directories for new <code style="background:rgba(99,102,241,0.15);padding:2px 6px;border-radius:4px;font-size:12px;">.mkv</code> files. When a new file is detected, it waits for the file to stop changing (stability check), then automatically starts conversion. If a conversion is already running, new files are queued.<br><br>
-                <strong style="color:#ccc;">Note:</strong> When Folder Watch is active, the Scan Interval in the Schedule tab is not needed — realtime watching replaces periodic scanning.
+                <strong style="color:#ccc;">Note:</strong> When Folder Watch is active, the Scan Interval above is not needed — realtime watching replaces periodic scanning.
               </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Plex -->
-        <div class="tab-content" id="tab-plex">
-          <div class="panel">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-              <div>
-                <div class="conv-section-label" style="margin-top:0;">Plex Library Refresh</div>
-                <p style="font-size:13px;color:#888;margin:2px 0 0;">Automatically refresh Plex libraries after conversion completes.</p>
-              </div>
-              <label class="toggle"><input type="checkbox" id="plexEnabled" onchange="togglePlex(this.checked)"><span class="slider"></span></label>
-            </div>
-            <div id="plexStatus" style="margin-bottom:14px;padding:10px 14px;border-radius:10px;font-size:13px;display:none;"></div>
-            <div class="conv-section-label">Server URL</div>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-              <input type="text" id="plexUrl" style="flex:1;" placeholder="http://localhost:32400">
-            </div>
-            <div class="conv-section-label">Plex Token</div>
-            <p style="font-size:13px;color:#888;margin-bottom:8px;">Find your token in Plex settings or <a href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" style="color:#818cf8;">see instructions</a>.</p>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-              <input type="password" id="plexToken" style="flex:1;" placeholder="Your Plex token">
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
-              <button class="btn btn-primary btn-sm" onclick="savePlexConfig()">Save</button>
-              <button class="btn btn-ghost btn-sm" onclick="testPlexConnection()">Test Connection</button>
-              <button class="btn btn-ghost btn-sm" onclick="manualPlexRefresh()">Refresh Now</button>
-              <span id="plexTestResult" style="font-size:12px;display:none;"></span>
-            </div>
-            <div id="plexLibraries" style="display:none;">
-              <div class="conv-section-label">Libraries</div>
-              <p style="font-size:13px;color:#888;margin-bottom:10px;">Select which libraries to refresh. Leave all unchecked to refresh all.</p>
-              <div id="plexLibraryList"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Subtitles -->
-        <div class="tab-content" id="tab-subs">
-          <div class="panel">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-              <div>
-                <div class="conv-section-label" style="margin-top:0;">Automatic Subtitles</div>
-                <p style="font-size:13px;color:#888;margin:2px 0 0;">Download subtitles automatically after conversion using OpenSubtitles.</p>
-              </div>
-              <label class="toggle"><input type="checkbox" id="subsEnabled" onchange="toggleSubtitles(this.checked)"><span class="slider"></span></label>
-            </div>
-            <div class="conv-section-label">API Key</div>
-            <p style="font-size:13px;color:#888;margin-bottom:8px;">Get a free API key at <a href="https://www.opensubtitles.com/consumers" target="_blank" style="color:#818cf8;">opensubtitles.com</a>.</p>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-              <input type="password" id="subsApiKey" style="flex:1;" placeholder="Your OpenSubtitles API key">
-            </div>
-            <div class="conv-section-label">Languages</div>
-            <p style="font-size:13px;color:#888;margin-bottom:10px;">Select which subtitle languages to download.</p>
-            <div id="subsLanguages" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
-              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="nl" class="subs-lang" checked> Dutch (NL)</label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="en" class="subs-lang" checked> English (EN)</label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="de" class="subs-lang"> German (DE)</label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="fr" class="subs-lang"> French (FR)</label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="es" class="subs-lang"> Spanish (ES)</label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="pt" class="subs-lang"> Portuguese (PT)</label>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-              <button class="btn btn-primary btn-sm" onclick="saveSubsConfig()">Save</button>
-              <button class="btn btn-ghost btn-sm" onclick="testSubsKey()">Test API Key</button>
-              <span id="subsTestResult" style="font-size:12px;display:none;"></span>
             </div>
           </div>
         </div>

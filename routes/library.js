@@ -36,4 +36,11 @@ router.post('/scan/cancel', (req, res) => {
   res.json({ ok: true, cancelled });
 });
 
+// GET /api/library/media
+router.get('/media', (req, res) => {
+  const stats = libraryScan.getCachedStats();
+  if (!stats || !stats.media) return res.json({ media: [] });
+  res.json({ media: stats.media });
+});
+
 module.exports = router;

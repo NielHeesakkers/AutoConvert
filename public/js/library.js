@@ -1,5 +1,7 @@
 // --- Library Overview ---
 let libPollTimer = null;
+let libMediaGroups = [];
+let libExpandedSeries = new Set();
 
 async function loadLibrary() {
   try {
@@ -11,6 +13,7 @@ async function loadLibrary() {
     }
     if (!data.totalFiles && data.totalFiles !== 0) return;
     renderLibrary(data);
+    loadLibraryMedia();
   } catch {}
 }
 
@@ -189,4 +192,144 @@ async function cancelLibraryScan() {
     await fetch('/api/library/scan/cancel', { method: 'POST' });
     toast('Scan cancelled');
   } catch {}
+}
+
+// --- Media Browser ---
+
+async function loadLibraryMedia() {
+  try {
+    const res = await fetch('/api/library/media');
+    const data = await res.json();
+    const media = data.media || [];
+    if (media.length === 0) {
+      document.getElementById('libMediaBrowser').style.display = 'none';
+      return;
+    }
+    libMediaGroups = groupMedia(media);
+    document.getElementById('libMediaBrowser').style.display = 'block';
+    renderLibraryMedia(libMediaGroups);
+  } catch {}
+}
+
+function groupMedia(media) {
+  const groups = new Map();
+  for (const item of media) {
+    const tmdb = item.tmdb || {};
+    const key = tmdb.id && tmdb.media_type
+      ? `${tmdb.media_type}_${tmdb.id}`
+      : `file_${item.path}`;
+
+    if (groups.has(key)) {
+      groups.get(key).files.push(item);
+    } else {
+      groups.set(key, {
+        key,
+        tmdb,
+        media_type: tmdb.media_type || 'movie',
+        title: tmdb.title || item.filename,
+        year: tmdb.year || '',
+        rating: tmdb.rating || 0,
+        poster: tmdb.poster || null,
+        files: [item],
+      });
+    }
+  }
+
+  // Sort: series by name, then movies by name
+  const arr = Array.from(groups.values());
+  arr.sort((a, b) => {
+    if (a.media_type === 'tv' && b.media_type !== 'tv') return -1;
+    if (a.media_type !== 'tv' && b.media_type === 'tv') return 1;
+    return a.title.localeCompare(b.title);
+  });
+
+  // Sort episodes within series
+  for (const g of arr) {
+    if (g.media_type === 'tv' && g.files.length > 1) {
+      g.files.sort((a, b) => {
+        const la = (a.tmdb?.ep_label || '');
+        const lb = (b.tmdb?.ep_label || '');
+        return la.localeCompare(lb);
+      });
+    }
+  }
+  return arr;
+}
+
+function renderLibraryMedia(groups) {
+  const search = (document.getElementById('libMediaSearch')?.value || '').toLowerCase();
+  const filter = document.getElementById('libMediaFilter')?.value || 'all';
+
+  const filtered = groups.filter(g => {
+    if (filter !== 'all' && g.media_type !== filter) return false;
+    if (search && !g.title.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  const grid = document.getElementById('libMediaGrid');
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div style="color:#555;font-size:13px;padding:20px;grid-column:1/-1;">No media found</div>';
+    return;
+  }
+
+  let html = '';
+  for (const g of filtered) {
+    const isTV = g.media_type === 'tv' && g.files.length > 1;
+    const totalSize = g.files.reduce((s, f) => s + (f.size || 0), 0);
+    const ratingStr = g.rating > 0 ? `<span style="color:#f59e0b;">★</span> ${g.rating.toFixed(1)}` : '';
+    const badgeColor = isTV ? '#818cf8' : '#4ade80';
+    const badgeText = isTV ? `${g.files.length} episodes` : g.files[0]?.format?.toUpperCase() || '';
+    const codecBadge = isTV ? '' : `<span class="lib-media-card-badge" style="background:rgba(74,158,255,0.15);color:#4a9eff;">${g.files[0]?.codec || ''}</span>`;
+    const resBadge = isTV ? '' : `<span class="lib-media-card-badge" style="background:rgba(192,132,252,0.15);color:#c084fc;">${g.files[0]?.resolution || ''}</span>`;
+
+    const posterHtml = g.poster
+      ? `<img src="${escHtml(g.poster)}" alt="" loading="lazy">`
+      : `<div class="lib-poster-placeholder">🎬</div>`;
+
+    html += `<div class="lib-media-card" onclick="${isTV ? `toggleSeriesExpand('${g.key}')` : ''}" ${isTV ? 'style="cursor:pointer;"' : 'style="cursor:default;"'}>
+      ${posterHtml}
+      <div class="lib-media-card-info">
+        <div class="lib-media-card-title">${escHtml(g.title)}</div>
+        <div class="lib-media-card-meta">
+          ${g.year ? `<span>${g.year}</span>` : ''}
+          ${ratingStr ? `<span>${ratingStr}</span>` : ''}
+        </div>
+        <div class="lib-media-card-meta" style="margin-top:4px;">
+          <span class="lib-media-card-badge" style="background:rgba(${isTV ? '129,140,248' : '74,222,128'},0.15);color:${badgeColor};">${badgeText}</span>
+          ${codecBadge}${resBadge}
+        </div>
+        <div class="lib-media-card-meta"><span>${fmtBytes(totalSize)}</span></div>
+      </div>
+    </div>`;
+
+    // Expanded episodes panel
+    if (isTV && libExpandedSeries.has(g.key)) {
+      html += `<div class="lib-episodes" id="lib-ep-${g.key}">`;
+      for (const ep of g.files) {
+        const epTmdb = ep.tmdb || {};
+        const label = epTmdb.ep_label || '';
+        const epName = epTmdb.ep_name || ep.filename;
+        html += `<div class="lib-episode-row">
+          <span class="ep-label">${escHtml(label)}</span>
+          <span class="ep-name" title="${escHtml(ep.filename)}">${escHtml(epName)}</span>
+          <span class="ep-meta">${ep.codec || ''} · ${ep.resolution || ''} · ${fmtBytes(ep.size)}</span>
+        </div>`;
+      }
+      html += '</div>';
+    }
+  }
+  grid.innerHTML = html;
+}
+
+function filterLibraryMedia() {
+  renderLibraryMedia(libMediaGroups);
+}
+
+function toggleSeriesExpand(key) {
+  if (libExpandedSeries.has(key)) {
+    libExpandedSeries.delete(key);
+  } else {
+    libExpandedSeries.add(key);
+  }
+  renderLibraryMedia(libMediaGroups);
 }

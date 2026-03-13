@@ -144,6 +144,60 @@ else
     echo "  ⚠ HandBrakeCLI not found — skipping bundle"
 fi
 
+# Bundle msmtp + its dylib dependencies
+echo "  Bundling msmtp..."
+MSMTP_BIN=$(realpath /opt/homebrew/bin/msmtp 2>/dev/null || echo "/opt/homebrew/bin/msmtp")
+if [ -f "$MSMTP_BIN" ]; then
+    FRAMEWORKS_DIR="$APP_BUNDLE/Contents/Frameworks"
+    mkdir -p "$FRAMEWORKS_DIR"
+    cp "$MSMTP_BIN" "$APP_BUNDLE/Contents/Resources/msmtp"
+    chmod +x "$APP_BUNDLE/Contents/Resources/msmtp"
+
+    # Copy all Homebrew dylibs and rewrite their paths
+    otool -L "$MSMTP_BIN" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}' | while read -r dylib; do
+        DYLIB_REAL=$(realpath "$dylib" 2>/dev/null || echo "$dylib")
+        DYLIB_NAME=$(basename "$dylib")
+        if [ ! -f "$FRAMEWORKS_DIR/$DYLIB_NAME" ]; then
+            cp "$DYLIB_REAL" "$FRAMEWORKS_DIR/$DYLIB_NAME"
+            chmod 644 "$FRAMEWORKS_DIR/$DYLIB_NAME"
+        fi
+        install_name_tool -change "$dylib" "@rpath/$DYLIB_NAME" "$APP_BUNDLE/Contents/Resources/msmtp"
+    done
+
+    # Resolve transitive dylib dependencies (reuses the same loop pattern)
+    MPASS=0
+    while true; do
+        MPASS=$((MPASS + 1))
+        rm -f /tmp/msmtp_new_deps.txt
+        for fw_dylib in "$FRAMEWORKS_DIR"/*.dylib; do
+            otool -L "$fw_dylib" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}' | while read -r dep; do
+                DEP_REAL=$(realpath "$dep" 2>/dev/null || echo "$dep")
+                DEP_NAME=$(basename "$dep")
+                if [ ! -f "$FRAMEWORKS_DIR/$DEP_NAME" ]; then
+                    cp "$DEP_REAL" "$FRAMEWORKS_DIR/$DEP_NAME"
+                    chmod 644 "$FRAMEWORKS_DIR/$DEP_NAME"
+                    echo "NEW" >> /tmp/msmtp_new_deps.txt
+                fi
+                install_name_tool -change "$dep" "@rpath/$DEP_NAME" "$fw_dylib"
+            done
+            install_name_tool -id "@rpath/$(basename "$fw_dylib")" "$fw_dylib"
+        done
+        if [ -f /tmp/msmtp_new_deps.txt ]; then
+            MNEW=$(wc -l < /tmp/msmtp_new_deps.txt | tr -d ' ')
+            rm -f /tmp/msmtp_new_deps.txt
+            [ "$MNEW" -eq 0 ] && break
+        else
+            break
+        fi
+        [ "$MPASS" -ge 10 ] && break
+    done
+
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE/Contents/Resources/msmtp" 2>/dev/null || true
+    echo "  ✓ msmtp bundled"
+else
+    echo "  ⚠ msmtp not found — skipping bundle"
+fi
+
 # Remove node_modules/.bin symlinks (breaks code signing sealed resources)
 rm -rf "$APP_BUNDLE/Contents/Resources/server/node_modules/.bin"
 
@@ -175,6 +229,14 @@ if [ -f "$APP_BUNDLE/Contents/Resources/HandBrakeCLI" ]; then
         --entitlements "$ENTITLEMENTS" \
         "$APP_BUNDLE/Contents/Resources/HandBrakeCLI"
     echo "  ✓ HandBrakeCLI signed"
+fi
+
+# Sign msmtp
+if [ -f "$APP_BUNDLE/Contents/Resources/msmtp" ]; then
+    codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \
+        --entitlements "$ENTITLEMENTS" \
+        "$APP_BUNDLE/Contents/Resources/msmtp"
+    echo "  ✓ msmtp signed"
 fi
 
 # Sign all .dylib files in node_modules (inside-out)

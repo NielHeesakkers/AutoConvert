@@ -1,6 +1,20 @@
 {
-  "version": "2.0",
+  "version": "2.1",
   "history": [
+    {
+      "version": "2.1",
+      "date": "2026-03-13",
+      "changes": [
+        "Library Media Browser: browse all movies and series with TMDB posters, ratings, and metadata",
+        "Media grouping: TV shows grouped by series with expandable episode lists",
+        "Search and filter media by title, type (movies/series)",
+        "Settings restructured: Media tab combines directories, Plex, and subtitles",
+        "Settings restructured: Schedule tab combines daily conversion and folder watch",
+        "Sidebar reordered: Library promoted to second position",
+        "Shared TMDB module for consistent metadata across conversion and library",
+        "msmtp bundled in macOS app — no separate brew install needed"
+      ]
+    },
     {
       "version": "2.0",
       "date": "2026-03-13",
