@@ -62,11 +62,13 @@ def fetch_tmdb(title, year, media_type, season=None, episode=None):
                 r = data["results"][0]
                 poster = f"{TMDB_IMG_BASE}{r['poster_path']}" if r.get("poster_path") else None
                 return {
+                    "id": r.get("id"),
                     "title": r.get("title", title),
                     "year": r.get("release_date", "")[:4],
                     "rating": r.get("vote_average", 0),
                     "overview": r.get("overview", "")[:150],
                     "poster": poster,
+                    "media_type": "movie",
                 }
         else:
             cache_key = title.lower()
@@ -87,6 +89,7 @@ def fetch_tmdb(title, year, media_type, season=None, episode=None):
                     ep = tmdb_request(f"/tv/{series['id']}/season/{season}/episode/{episode}")
                     still = f"{TMDB_IMG_BASE}{ep['still_path']}" if ep.get("still_path") else None
                     return {
+                        "id": series.get("id"),
                         "title": series_name,
                         "year": series.get("first_air_date", "")[:4],
                         "rating": ep.get("vote_average", 0),
@@ -94,17 +97,20 @@ def fetch_tmdb(title, year, media_type, season=None, episode=None):
                         "poster": still or series_poster,
                         "ep_label": f"S{season:02d}E{episode:02d}",
                         "ep_name": ep.get("name", ""),
+                        "media_type": "tv",
                     }
                 except Exception:
                     pass
 
             return {
+                "id": series.get("id"),
                 "title": series_name,
                 "year": series.get("first_air_date", "")[:4],
                 "rating": series.get("vote_average", 0),
                 "overview": series.get("overview", "")[:150],
                 "poster": series_poster,
                 "ep_label": f"S{season:02d}E{episode:02d}" if season and episode else "",
+                "media_type": "tv",
             }
     except Exception:
         pass
@@ -384,6 +390,8 @@ def save_json_report(report_dir, converted_items, failed_items, dupes, skipped):
             "new_size": item["new_size"],
             "duration": item["duration"],
             "tmdb": {
+                "id": info.get("id"),
+                "media_type": info.get("media_type", ""),
                 "title": info.get("title", ""),
                 "year": info.get("year", ""),
                 "rating": info.get("rating", 0),
@@ -405,6 +413,8 @@ def save_json_report(report_dir, converted_items, failed_items, dupes, skipped):
             "basename": item["basename"],
             "size": item["size"],
             "tmdb": {
+                "id": info.get("id"),
+                "media_type": info.get("media_type", ""),
                 "title": info.get("title", ""),
                 "year": info.get("year", ""),
                 "rating": info.get("rating", 0),

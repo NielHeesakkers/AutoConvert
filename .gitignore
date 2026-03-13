@@ -11,3 +11,4 @@ macos-app/.node-cache/
 backups/
 reports/
 .session-secret
+library_cache.json

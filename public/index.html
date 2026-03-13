@@ -4,444 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AutoConvert</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; display: flex; }
-
-    /* Sidebar */
-    .sidebar { width: 220px; background: #151820; border-right: 1px solid #1e2130; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 10; }
-    .sidebar-logo { padding: 24px 20px 20px; font-size: 20px; font-weight: 700; color: #fff; }
-    .sidebar-logo span { color: #6366f1; }
-    .sidebar-status { display: flex; align-items: center; gap: 8px; padding: 0 20px 18px; font-size: 13px; color: #888; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .status-dot.idle { background: #4ade80; }
-    .status-dot.running { background: #f59e0b; animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-    @keyframes modalIn { from { opacity:0; transform:scale(0.95) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }
-    .sidebar-nav { list-style: none; flex: 1; padding: 0 8px; }
-    .sidebar-nav li { margin-bottom: 2px; }
-    .sidebar-nav a { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; color: #888; text-decoration: none; font-size: 13px; font-weight: 500; transition: all 0.15s; cursor: pointer; user-select: none; }
-    .sidebar-nav a:hover { background: rgba(255,255,255,0.04); color: #ccc; }
-    .sidebar-nav a.active { background: #6366f1; color: #fff; }
-    .sidebar-nav a .nav-icon { width: 18px; text-align: center; font-size: 15px; flex-shrink: 0; }
-    .sidebar-nav a .nav-badge { margin-left: auto; font-size: 11px; font-weight: 600; background: rgba(255,255,255,0.1); padding: 1px 7px; border-radius: 10px; }
-    .sidebar-nav a.active .nav-badge { background: rgba(255,255,255,0.2); }
-    .sidebar-version { padding: 12px 20px; font-size: 11px; color: #444; border-top: 1px solid #1e2130; }
-
-    /* Main */
-    .main { flex: 1; margin-left: 220px; min-height: 100vh; }
-    .main-header { padding: 24px 32px 0; }
-    .main-title { font-size: 20px; font-weight: 700; color: #fff; }
-    .main-content { padding: 20px 32px 40px; max-width: 900px; }
-    .section { display: none; }
-    .section.active { display: block; }
-
-    /* Shared */
-    .btn { padding: 8px 18px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-primary { background: #6366f1; color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #5558e6; }
-    .btn-danger { background: #ef4444; color: #fff; }
-    .btn-danger:hover:not(:disabled) { background: #dc2626; }
-    .btn-sm { padding: 5px 12px; font-size: 12px; }
-    .btn-ghost { background: #1e2130; color: #ccc; border: 1px solid #2a2d3a; }
-    .btn-ghost:hover { background: #252838; color: #fff; }
-    .btn-danger-outline { background: transparent; border: 1px solid #ef4444; color: #ef4444; }
-    .btn-danger-outline:hover { background: rgba(239,68,68,0.1); }
-    select, input[type="email"], input[type="text"], input[type="password"], input[type="number"] {
-      background: #0f1117; border: 1px solid #2a2d3a; color: #e0e0e0; border-radius: 8px; padding: 8px 12px; font-size: 14px;
-    }
-    select:focus, input:focus { outline: none; border-color: #6366f1; }
-    .panel { background: #1a1d27; border-radius: 12px; border: 1px solid #2a2d3a; padding: 20px; margin-bottom: 16px; }
-
-    /* Tabs (settings) */
-    .tabs { display: flex; gap: 2px; margin-bottom: 20px; background: #151820; border-radius: 10px; padding: 3px; border: 1px solid #1e2130; }
-    .tab { flex: 1; padding: 8px 4px; text-align: center; font-size: 12px; font-weight: 600; color: #666; cursor: pointer; border-radius: 8px; transition: all 0.15s; user-select: none; white-space: nowrap; }
-    .tab:hover { color: #aaa; }
-    .tab.active { background: #6366f1; color: #fff; }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-
-    /* Conversion */
-    .conv-status-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-    .conv-indicator { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; }
-    .conv-indicator .status-dot { width: 12px; height: 12px; }
-    .progress-bar { width: 100%; height: 6px; background: #1e2130; border-radius: 3px; overflow: hidden; margin: 12px 0 4px; }
-    .progress-bar-fill { height: 100%; background: #6366f1; border-radius: 3px; transition: width 0.5s; }
-    .progress-label { font-size: 12px; color: #888; margin-bottom: 16px; }
-    .conv-file { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #0f1117; border-radius: 8px; margin-bottom: 4px; font-size: 13px; }
-    .conv-file .cf-icon { width: 18px; text-align: center; flex-shrink: 0; }
-    .conv-file .cf-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .conv-file .cf-size { color: #666; font-size: 12px; flex-shrink: 0; }
-    .conv-file.done { color: #4ade80; }
-    .conv-file.active { color: #f59e0b; background: #1a1d27; border: 1px solid #2a2d3a; }
-    .conv-file.pending { color: #555; }
-    .conv-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #555; margin: 16px 0 8px; }
-
-    /* TMDB Cards */
-    .tmdb-card { display: flex; align-items: flex-start; gap: 14px; padding: 12px; background: #0f1117; border-radius: 10px; margin-bottom: 6px; }
-    .tmdb-poster { flex-shrink: 0; width: 50px; }
-    .tmdb-info { flex: 1; min-width: 0; }
-    .tmdb-badges { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
-    .tmdb-badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-    .tmdb-ep { background: #1a2e1a; color: #4ade80; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-    .tmdb-rating { font-weight: bold; font-size: 12px; }
-    .tmdb-title { font-weight: 600; font-size: 14px; color: #e0e0e0; line-height: 1.3; }
-    .tmdb-overview { color: #666; font-size: 11px; margin-top: 4px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .tmdb-meta { margin-top: 6px; font-size: 12px; color: #555; }
-
-    /* TMDB Card States (during conversion) */
-    .tmdb-card.active { background: #1a1d27; border-left: 3px solid #f59e0b; }
-    .tmdb-card.done { border-left: 3px solid #4ade80; }
-    .tmdb-card.failed { border-left: 3px solid #ef4444; }
-    .tmdb-card.pending { opacity: 0.45; }
-    .tmdb-card .tmdb-progress { width: 100%; height: 4px; background: #1e2130; border-radius: 2px; overflow: hidden; margin-top: 6px; }
-    .tmdb-card .tmdb-progress-fill { height: 100%; background: #f59e0b; border-radius: 2px; transition: width 0.5s; }
-    .tmdb-card .tmdb-progress-label { font-size: 11px; color: #f59e0b; margin-top: 3px; }
-    .tmdb-card .tmdb-size-compare { font-size: 12px; color: #4ade80; margin-top: 4px; }
-    .tmdb-card .tmdb-size-compare.failed { color: #ef4444; }
-    .tmdb-card .tmdb-status-icon { font-size: 13px; margin-right: 4px; }
-
-    /* Queue drag & drop */
-    .queue-item { transition: transform 0.15s ease, box-shadow 0.15s ease; border-radius: 10px; }
-    .queue-item:active { cursor: grabbing; }
-    .queue-item.drag-over { box-shadow: 0 -2px 0 0 #6366f1; }
-    .queue-grip { opacity: 0.4; transition: opacity 0.15s; }
-    .queue-item:hover .queue-grip { opacity: 0.8; }
-    [data-theme="light"] .queue-grip { color: #999 !important; }
-    [data-theme="light"] .queue-item.drag-over { box-shadow: 0 -2px 0 0 #6366f1; }
-
-    /* Directories */
-    .dir-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: #0f1117; border-radius: 10px; margin-bottom: 8px; cursor: pointer; user-select: none; }
-    .dir-header:hover { background: #13151e; }
-    .dir-chevron { color: #555; font-size: 10px; transition: transform 0.2s; flex-shrink: 0; }
-    .dir-header.collapsed .dir-chevron { transform: rotate(-90deg); }
-    .dir-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .dir-dot.exists { background: #4ade80; }
-    .dir-dot.missing { background: #ef4444; }
-    .dir-name { font-weight: 600; font-size: 14px; color: #e0e0e0; flex: 1; }
-    .dir-path { font-size: 12px; color: #555; }
-    .dir-count { font-size: 12px; color: #888; background: #2a2d3a; padding: 2px 8px; border-radius: 10px; }
-    .dir-files { padding: 0 0 8px; }
-    .dir-header.collapsed + .dir-files { display: none; }
-    .dir-file { display: flex; align-items: center; gap: 10px; padding: 8px 14px 8px 36px; font-size: 13px; color: #aaa; border-bottom: 1px solid #1a1d27; }
-    .dir-file:last-child { border-bottom: none; }
-    .dir-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dir-file-size { font-size: 12px; color: #666; }
-    .dir-empty { padding: 10px 14px 10px 36px; font-size: 13px; color: #444; }
-
-    /* SMTP */
-    .smtp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .smtp-grid.full { grid-template-columns: 1fr; }
-    .form-group { display: flex; flex-direction: column; gap: 4px; }
-    .form-group label { font-size: 12px; color: #888; }
-    .form-group input { width: 100%; }
-    .smtp-toggles { display: flex; gap: 16px; align-items: center; margin-top: 8px; font-size: 13px; }
-    .smtp-toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: #aaa; }
-
-    /* Recipients */
-    .email-list { list-style: none; margin-bottom: 12px; }
-    .email-list li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #0f1117; border-radius: 8px; margin-bottom: 6px; font-size: 14px; }
-    .email-list li.inactive { opacity: 0.45; }
-    .email-list li .email-addr { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    .email-list li button { background: none; border: none; cursor: pointer; font-size: 14px; padding: 0 4px; }
-    .email-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
-    .btn-icon { color: #888; font-size: 16px; background: none; border: none; cursor: pointer; }
-    .btn-icon:hover { color: #e0e0e0; }
-    .btn-icon.delete { color: #ef4444; }
-    .btn-icon.delete:hover { color: #f87171; }
-    .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
-    .toggle input { opacity: 0; width: 0; height: 0; }
-    .toggle .slider { position: absolute; inset: 0; background: #333; border-radius: 20px; cursor: pointer; transition: 0.2s; }
-    .toggle .slider:before { content: ''; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; background: #888; border-radius: 50%; transition: 0.2s; }
-    .toggle input:checked + .slider { background: #6366f1; }
-    .toggle input:checked + .slider:before { transform: translateX(16px); background: #fff; }
-    .add-row { display: flex; gap: 8px; }
-    .add-row input { flex: 1; }
-    .test-all-row { margin-top: 12px; padding-top: 12px; border-top: 1px solid #2a2d3a; }
-
-    /* Reports */
-    .report-day { background: #0f1117; border-radius: 10px; margin-bottom: 10px; overflow: hidden; border: 1px solid #1e2130; }
-    .report-day-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; user-select: none; }
-    .report-day-header:hover { background: rgba(255,255,255,0.03); }
-    .report-day-chevron { color: #555; font-size: 10px; transition: transform 0.2s; flex-shrink: 0; }
-    .report-day.collapsed .report-day-chevron { transform: rotate(-90deg); }
-    .report-day-date { font-weight: 600; color: #ccc; font-size: 14px; flex: 1; }
-    .report-day-badges { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
-    .report-day-delete { background: none; border: none; color: #555; cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
-    .report-day-delete:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
-    .report-day-content { padding: 0 16px 14px; }
-    .report-day.collapsed .report-day-content { display: none; }
-    .report-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #555; margin: 14px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #1e2130; }
-    .report-section-label:first-child { margin-top: 4px; }
-    .report-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; background: #151820; border-radius: 8px; margin-bottom: 6px; border-left: 3px solid transparent; }
-    .report-item.failed { border-left-color: #ef4444; background: rgba(239,68,68,0.06); }
-    .report-poster { width: 50px; height: 75px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: #2a2d3a; }
-    .report-poster-placeholder { width: 50px; height: 75px; border-radius: 6px; flex-shrink: 0; background: #2a2d3a; display: flex; align-items: center; justify-content: center; color: #444; font-size: 20px; }
-    .report-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-    .report-item-title { font-weight: 600; font-size: 14px; color: #e0e0e0; }
-    .report-item.failed .report-item-title { color: #f87171; }
-    .report-item-title .year { font-weight: 400; color: #888; margin-left: 4px; }
-    .report-item-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .report-badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 4px; color: #fff; line-height: 1.4; }
-    .report-badge.movies { background: #3b82f6; }
-    .report-badge.series { background: #a855f7; }
-    .report-badge.episode { background: #22c55e; }
-    .report-badge.rating { background: transparent; color: #fbbf24; padding: 0; }
-    .report-badge.rating::before { content: '\2605 '; }
-    .report-item-size { font-size: 12px; color: #888; }
-    .report-item-duration { font-size: 12px; color: #666; }
-    .report-item-filename { font-size: 12px; color: #888; word-break: break-all; }
-    .report-download-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: rgba(99,102,241,0.15); color: #818cf8; font-size: 14px; text-decoration: none; flex-shrink: 0; align-self: center; transition: background 0.15s; }
-    .report-download-btn:hover { background: rgba(99,102,241,0.3); }
-    .about-dep { padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; }
-    .about-dep-name { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
-    .about-dep-name a { color: #818cf8; text-decoration: none; }
-    .about-dep-name a:hover { text-decoration: underline; }
-    .about-dep-desc { font-size: 12px; color: #888; line-height: 1.4; }
-    .about-dep-license { font-size: 11px; color: #666; margin-top: 4px; font-family: monospace; }
-    .report-dupe-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #151820; border-radius: 6px; margin-bottom: 4px; font-size: 13px; color: #888; }
-    .report-dupe-item .dupe-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .report-summary-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; color: #fff; }
-    .report-summary-badge.converted { background: #22c55e; }
-    .report-summary-badge.failed { background: #ef4444; }
-    .report-summary-badge.dupes { background: #6b7280; }
-    .report-load-more { display: block; width: 100%; padding: 10px; background: #1e2130; border: 1px solid #2a2d3a; color: #888; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-align: center; margin-top: 10px; }
-    .report-load-more:hover { background: #252838; color: #ccc; }
-    .report-empty { text-align: center; padding: 30px; color: #555; font-size: 14px; }
-
-    /* Version history */
-    .version-entry { padding: 16px; background: #0f1117; border-radius: 10px; margin-bottom: 8px; border: 1px solid #1e2130; }
-    .version-entry:first-child { border-color: #6366f1; }
-    .version-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-    .version-tag { font-size: 13px; font-weight: 700; color: #6366f1; background: rgba(99,102,241,0.1); padding: 2px 10px; border-radius: 6px; }
-    .version-date { font-size: 12px; color: #666; }
-    .version-changes { list-style: none; }
-    .version-changes li { font-size: 13px; color: #aaa; padding: 3px 0; padding-left: 14px; position: relative; }
-    .version-changes li::before { content: '\2022'; position: absolute; left: 0; color: #555; }
-
-    /* Backup */
-    .backup-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #0f1117; border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
-    .backup-name { flex: 1; color: #ccc; }
-    .backup-size { color: #666; font-size: 12px; }
-
-    .preset-card { background:#0f1117; border-radius:10px; border:1px solid #1e2130; padding:16px; margin-bottom:10px; }
-    .preset-card.active { border-color:#6366f1; }
-    .preset-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-    .preset-card-name { font-weight:600; font-size:15px; color:#e0e0e0; }
-    .preset-card-badge { font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; background:rgba(99,102,241,0.15); color:#6366f1; }
-    .preset-card-row { display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid #1a1a2e; font-size:13px; }
-    .preset-card-row span:first-child { color:#888; }
-    .preset-card-row span:last-child { color:#e0e0e0; }
-    .preset-card-actions { display:flex; gap:8px; margin-top:12px; padding-top:10px; border-top:1px solid #1e2130; }
-
-    .toast { position: fixed; bottom: 20px; right: 20px; background: #22c55e; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
-    .toast.error { background: #ef4444; }
-    .toast.show { opacity: 1; }
-
-    .mobile-header { display: none; }
-    .sidebar-overlay { display: none; }
-    @media (max-width: 768px) {
-      .sidebar { transform: translateX(-100%); transition: transform 0.25s; width: 260px; }
-      .sidebar.open { transform: translateX(0); }
-      .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9; display: none; }
-      .sidebar-overlay.show { display: block; }
-      .main { margin-left: 0; }
-      .mobile-header { display: flex; align-items: center; gap: 12px; padding: 16px 20px; background: #151820; border-bottom: 1px solid #1e2130; position: sticky; top: 0; z-index: 8; }
-      .mobile-hamburger { background: none; border: none; color: #ccc; font-size: 22px; cursor: pointer; }
-      .mobile-title { font-size: 17px; font-weight: 700; color: #fff; }
-      .mobile-title span { color: #6366f1; }
-      .main-header { display: none; }
-      .main-content { padding: 16px 16px 40px; }
-      .tabs { overflow-x: auto; }
-    }
-
-    /* ===== Light Theme ===== */
-    [data-theme="light"] body { background: #f5f5f7; color: #1d1d1f; }
-
-    /* Sidebar */
-    [data-theme="light"] .sidebar { background: #ffffff; border-right-color: #e5e5e7; }
-    [data-theme="light"] .sidebar-logo { color: #1d1d1f; }
-    [data-theme="light"] .sidebar-status { color: #6e6e73; }
-    [data-theme="light"] .sidebar-nav a { color: #6e6e73; }
-    [data-theme="light"] .sidebar-nav a:hover { background: rgba(0,0,0,0.04); color: #1d1d1f; }
-    [data-theme="light"] .sidebar-nav a.active { background: #6366f1; color: #fff; }
-    [data-theme="light"] .sidebar-nav a .nav-badge { background: rgba(0,0,0,0.06); }
-    [data-theme="light"] .sidebar-nav a.active .nav-badge { background: rgba(255,255,255,0.2); }
-    [data-theme="light"] .sidebar-version { color: #aaa; border-top-color: #e5e5e7; }
-
-    /* Main header */
-    [data-theme="light"] .main-title { color: #1d1d1f; }
-
-    /* Buttons */
-    [data-theme="light"] .btn-ghost { background: #f0f0f2; color: #333; border-color: #d1d1d6; }
-    [data-theme="light"] .btn-ghost:hover { background: #e5e5ea; color: #1d1d1f; }
-    [data-theme="light"] .btn-danger-outline { border-color: #ef4444; color: #ef4444; }
-    [data-theme="light"] .btn-danger-outline:hover { background: rgba(239,68,68,0.08); }
-
-    /* Inputs & selects */
-    [data-theme="light"] select,
-    [data-theme="light"] input[type="email"],
-    [data-theme="light"] input[type="text"],
-    [data-theme="light"] input[type="password"],
-    [data-theme="light"] input[type="number"] { background: #ffffff; border-color: #d1d1d6; color: #1d1d1f; }
-
-    /* Panel */
-    [data-theme="light"] .panel { background: #ffffff; border-color: #e5e5e7; }
-
-    /* Tabs */
-    [data-theme="light"] .tabs { background: #f0f0f2; border-color: #e5e5e7; }
-    [data-theme="light"] .tab { color: #8e8e93; }
-    [data-theme="light"] .tab:hover { color: #1d1d1f; }
-    [data-theme="light"] .tab.active { background: #6366f1; color: #fff; }
-
-    /* Conversion */
-    [data-theme="light"] .progress-bar { background: #e5e5ea; }
-    [data-theme="light"] .progress-label { color: #6e6e73; }
-    [data-theme="light"] .conv-file { background: #f5f5f7; color: #1d1d1f; }
-    [data-theme="light"] .conv-file .cf-size { color: #8e8e93; }
-    [data-theme="light"] .conv-file.done { color: #16a34a; }
-    [data-theme="light"] .conv-file.active { color: #d97706; background: #fffbeb; border-color: #fde68a; }
-    [data-theme="light"] .conv-file.pending { color: #aaa; }
-    [data-theme="light"] .conv-section-label { color: #8e8e93; }
-
-    /* TMDB Cards */
-    [data-theme="light"] .tmdb-card { background: #f5f5f7; }
-    [data-theme="light"] .tmdb-card.active { background: #fffbeb; border-left-color: #f59e0b; }
-    [data-theme="light"] .tmdb-card.done { border-left-color: #4ade80; }
-    [data-theme="light"] .tmdb-card.failed { border-left-color: #ef4444; }
-    [data-theme="light"] .tmdb-card.pending { opacity: 0.5; }
-    [data-theme="light"] .tmdb-card .tmdb-progress { background: #e5e5ea; }
-    [data-theme="light"] .tmdb-title { color: #1d1d1f; }
-    [data-theme="light"] .tmdb-overview { color: #8e8e93; }
-    [data-theme="light"] .tmdb-meta { color: #8e8e93; }
-
-    /* Directories */
-    [data-theme="light"] .dir-header { background: #f5f5f7; }
-    [data-theme="light"] .dir-header:hover { background: #ededf0; }
-    [data-theme="light"] .dir-chevron { color: #8e8e93; }
-    [data-theme="light"] .dir-name { color: #1d1d1f; }
-    [data-theme="light"] .dir-path { color: #8e8e93; }
-    [data-theme="light"] .dir-count { color: #6e6e73; background: #e5e5ea; }
-    [data-theme="light"] .dir-file { color: #3a3a3c; border-bottom-color: #f0f0f2; }
-    [data-theme="light"] .dir-file-size { color: #8e8e93; }
-    [data-theme="light"] .dir-empty { color: #aaa; }
-
-    /* SMTP / Forms */
-    [data-theme="light"] .form-group label { color: #6e6e73; }
-    [data-theme="light"] .smtp-toggles label { color: #3a3a3c; }
-
-    /* Recipients */
-    [data-theme="light"] .email-list li { background: #f5f5f7; color: #1d1d1f; }
-    [data-theme="light"] .btn-icon { color: #8e8e93; }
-    [data-theme="light"] .btn-icon:hover { color: #1d1d1f; }
-    [data-theme="light"] .btn-icon.delete { color: #ef4444; }
-    [data-theme="light"] .toggle .slider { background: #d1d1d6; }
-    [data-theme="light"] .toggle .slider:before { background: #fff; }
-    [data-theme="light"] .test-all-row { border-top-color: #e5e5e7; }
-
-    /* Reports */
-    [data-theme="light"] .report-day { background: #f5f5f7; border-color: #e5e5e7; }
-    [data-theme="light"] .report-day-header:hover { background: rgba(0,0,0,0.03); }
-    [data-theme="light"] .report-day-chevron { color: #8e8e93; }
-    [data-theme="light"] .report-day-date { color: #1d1d1f; }
-    [data-theme="light"] .report-day-delete { color: #aaa; }
-    [data-theme="light"] .report-day-delete:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
-    [data-theme="light"] .report-section-label { color: #8e8e93; border-bottom-color: #e5e5e7; }
-    [data-theme="light"] .report-download-btn { background: rgba(99,102,241,0.1); color: #6366f1; }
-    [data-theme="light"] .report-download-btn:hover { background: rgba(99,102,241,0.2); }
-    [data-theme="light"] .about-dep { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.08); }
-    [data-theme="light"] .about-dep-name a { color: #6366f1; }
-    [data-theme="light"] .about-dep-desc { color: #666; }
-    [data-theme="light"] .about-dep-license { color: #999; }
-    [data-theme="light"] .report-item { background: #ffffff; border-left-color: transparent; }
-    [data-theme="light"] .report-item.failed { background: rgba(239,68,68,0.05); }
-    [data-theme="light"] .report-poster-placeholder { background: #e5e5ea; color: #aaa; }
-    [data-theme="light"] .report-item-title { color: #1d1d1f; }
-    [data-theme="light"] .report-item.failed .report-item-title { color: #dc2626; }
-    [data-theme="light"] .report-item-title .year { color: #8e8e93; }
-    [data-theme="light"] .report-item-size { color: #6e6e73; }
-    [data-theme="light"] .report-item-duration { color: #8e8e93; }
-    [data-theme="light"] .report-item-filename { color: #6e6e73; }
-    [data-theme="light"] .report-dupe-item { background: #ffffff; color: #6e6e73; }
-    [data-theme="light"] .report-load-more { background: #f0f0f2; border-color: #d1d1d6; color: #6e6e73; }
-    [data-theme="light"] .report-load-more:hover { background: #e5e5ea; color: #1d1d1f; }
-    [data-theme="light"] .report-empty { color: #aaa; }
-
-    /* Version history */
-    [data-theme="light"] .version-entry { background: #f5f5f7; border-color: #e5e5e7; }
-    [data-theme="light"] .version-entry:first-child { border-color: #6366f1; }
-    [data-theme="light"] .version-date { color: #8e8e93; }
-    [data-theme="light"] .version-changes li { color: #3a3a3c; }
-    [data-theme="light"] .version-changes li::before { color: #aaa; }
-
-    /* Backup */
-    [data-theme="light"] .backup-item { background: #f5f5f7; }
-    [data-theme="light"] .backup-name { color: #1d1d1f; }
-    [data-theme="light"] .backup-size { color: #8e8e93; }
-
-    /* Presets */
-    [data-theme="light"] .preset-card { background: #f5f5f7; border-color: #e5e5e7; }
-    [data-theme="light"] .preset-card.active { border-color: #6366f1; }
-    [data-theme="light"] .preset-card-name { color: #1d1d1f; }
-    [data-theme="light"] .preset-card-row { border-bottom-color: #e5e5e7; }
-    [data-theme="light"] .preset-card-row span:first-child { color: #8e8e93; }
-    [data-theme="light"] .preset-card-row span:last-child { color: #1d1d1f; }
-    [data-theme="light"] .preset-card-actions { border-top-color: #e5e5e7; }
-
-    /* Toast */
-    [data-theme="light"] .toast { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-
-    /* Modal */
-    [data-theme="light"] #modalOverlay > div { background: #ffffff; border-color: #e5e5e7; box-shadow: 0 8px 32px rgba(0,0,0,0.12); }
-    [data-theme="light"] #modalTitle { color: #1d1d1f; }
-
-    /* Mobile */
-    [data-theme="light"] .mobile-header { background: #ffffff; border-bottom-color: #e5e5e7; }
-    [data-theme="light"] .mobile-hamburger { color: #3a3a3c; }
-    [data-theme="light"] .mobile-title { color: #1d1d1f; }
-    [data-theme="light"] .sidebar-overlay.show { background: rgba(0,0,0,0.3); }
-
-    /* Inline style color overrides for elements with hardcoded colors */
-    [data-theme="light"] [style*="color:#e0e0e0"],
-    [data-theme="light"] [style*="color: #e0e0e0"] { color: #1d1d1f !important; }
-    [data-theme="light"] [style*="color:#888"],
-    [data-theme="light"] [style*="color: #888"] { color: #6e6e73 !important; }
-    [data-theme="light"] [style*="color:#555"],
-    [data-theme="light"] [style*="color: #555"] { color: #8e8e93 !important; }
-    [data-theme="light"] [style*="color:#ccc"],
-    [data-theme="light"] [style*="color: #ccc"] { color: #3a3a3c !important; }
-    [data-theme="light"] [style*="color:#aaa"],
-    [data-theme="light"] [style*="color: #aaa"] { color: #6e6e73 !important; }
-    [data-theme="light"] [style*="color:#666"],
-    [data-theme="light"] [style*="color: #666"] { color: #8e8e93 !important; }
-    [data-theme="light"] [style*="color:#444"],
-    [data-theme="light"] [style*="color: #444"] { color: #aaa !important; }
-    [data-theme="light"] [style*="background:#0f1117"],
-    [data-theme="light"] [style*="background: #0f1117"] { background: #f5f5f7 !important; }
-    [data-theme="light"] [style*="background:#1e2130"],
-    [data-theme="light"] [style*="background: #1e2130"] { background: #e5e5ea !important; }
-    [data-theme="light"] [style*="background:#151820"],
-    [data-theme="light"] [style*="background: #151820"] { background: #f0f0f2 !important; }
-    [data-theme="light"] [style*="background:#1a1d27"],
-    [data-theme="light"] [style*="background: #1a1d27"] { background: #ffffff !important; }
-    [data-theme="light"] [style*="background:#1e1e2e"],
-    [data-theme="light"] [style*="background: #1e1e2e"] { background: #ffffff !important; }
-    [data-theme="light"] [style*="border-top:1px solid #2a2d3a"],
-    [data-theme="light"] [style*="border-top: 1px solid #2a2d3a"] { border-top-color: #e5e5e7 !important; }
-    [data-theme="light"] [style*="border-bottom:1px solid #1e2130"],
-    [data-theme="light"] [style*="border-bottom: 1px solid #1e2130"] { border-bottom-color: #e5e5e7 !important; }
-    [data-theme="light"] [style*="border:1px solid #333"],
-    [data-theme="light"] [style*="border: 1px solid #333"] { border-color: #e5e5e7 !important; }
-    [data-theme="light"] [style*="border-bottom:1px solid #1a1d27"],
-    [data-theme="light"] [style*="border-bottom: 1px solid #1a1d27"] { border-bottom-color: #f0f0f2 !important; }
-    [data-theme="light"] [style*="background:#2a2d3a"],
-    [data-theme="light"] [style*="background: #2a2d3a"] { background: #e5e5ea !important; }
-
-    /* Theme toggle button in sidebar */
-    [data-theme="light"] #themeToggle, [data-theme="light"] #logoutBtn { border-color: #d1d1d6; color: #6e6e73; }
-    [data-theme="light"] #themeToggle:hover, [data-theme="light"] #logoutBtn:hover { background: #f0f0f2; color: #1d1d1f; }
-  </style>
+  <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
@@ -455,6 +18,7 @@
       <li><a data-section="convert" class="active"><span class="nav-icon">&#9654;</span> Conversion</a></li>
       <li><a data-section="reports"><span class="nav-icon">&#128202;</span> Reports</a></li>
       <li><a data-section="recipients"><span class="nav-icon">&#128101;</span> Recipients</a></li>
+      <li><a data-section="library"><span class="nav-icon">&#128218;</span> Library</a></li>
       <li><a data-section="settings"><span class="nav-icon">&#9881;</span> Settings</a></li>
       <li><a data-section="changelog"><span class="nav-icon">&#128203;</span> Version History</a></li>
     </ul>
@@ -554,14 +118,79 @@
         </div>
       </div>
 
+      <!-- Library -->
+      <div class="section" id="sec-library">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div id="libScanInfo" style="font-size:13px;color:#888;"></div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm" id="btnLibCancel" onclick="cancelLibraryScan()" style="display:none;">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="btnLibScan" onclick="startLibraryScan()">Scan Library</button>
+          </div>
+        </div>
+        <div id="libProgress" style="display:none;margin-bottom:16px;">
+          <div class="progress-bar"><div class="progress-bar-fill" id="libProgressBar" style="width:0%"></div></div>
+          <div class="progress-label" id="libProgressLabel">Scanning...</div>
+        </div>
+        <!-- Summary cards -->
+        <div id="libSummary" style="display:none;margin-bottom:16px;">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+            <div class="panel" style="margin:0;padding:14px;text-align:center;">
+              <div style="font-size:22px;font-weight:700;color:#4a9eff;" id="libTotalFiles">0</div>
+              <div style="font-size:11px;color:#888;margin-top:2px;">Total Files</div>
+            </div>
+            <div class="panel" style="margin:0;padding:14px;text-align:center;">
+              <div style="font-size:22px;font-weight:700;color:#c084fc;" id="libTotalSize">0</div>
+              <div style="font-size:11px;color:#888;margin-top:2px;">Total Size</div>
+            </div>
+            <div class="panel" style="margin:0;padding:14px;text-align:center;">
+              <div style="font-size:22px;font-weight:700;color:#4ade80;" id="libMp4Count">0</div>
+              <div style="font-size:11px;color:#888;margin-top:2px;">MP4</div>
+            </div>
+            <div class="panel" style="margin:0;padding:14px;text-align:center;">
+              <div style="font-size:22px;font-weight:700;color:#f59e0b;" id="libMkvCount">0</div>
+              <div style="font-size:11px;color:#888;margin-top:2px;">MKV</div>
+            </div>
+          </div>
+        </div>
+        <!-- Directory usage -->
+        <div id="libDirChart" class="panel" style="display:none;">
+          <div class="conv-section-label" style="margin-top:0;">Disk Usage by Directory</div>
+          <div id="libDirBars"></div>
+        </div>
+        <!-- Charts row -->
+        <div id="libCharts" style="display:none;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px;">
+          <div class="panel" style="margin:0;text-align:center;">
+            <div class="conv-section-label" style="margin-top:0;">Format</div>
+            <div id="libChartFormat"></div>
+          </div>
+          <div class="panel" style="margin:0;text-align:center;">
+            <div class="conv-section-label" style="margin-top:0;">Codec</div>
+            <div id="libChartCodec"></div>
+          </div>
+          <div class="panel" style="margin:0;text-align:center;">
+            <div class="conv-section-label" style="margin-top:0;">Resolution</div>
+            <div id="libChartResolution"></div>
+          </div>
+        </div>
+        <!-- Conversion history -->
+        <div id="libHistory" class="panel" style="display:none;margin-top:12px;">
+          <div class="conv-section-label" style="margin-top:0;">Conversion History (last 30 days)</div>
+          <div id="libHistoryChart" style="height:120px;"></div>
+        </div>
+      </div>
+
       <!-- Instellingen -->
       <div class="section" id="sec-settings">
         <div class="tabs" id="settingsTabs">
           <div class="tab active" data-tab="tab-general">General</div>
           <div class="tab" data-tab="tab-dirs">Media</div>
           <div class="tab" data-tab="tab-schedule">Schedule</div>
+          <div class="tab" data-tab="tab-watch">Watch</div>
+          <div class="tab" data-tab="tab-plex">Plex</div>
+          <div class="tab" data-tab="tab-subs">Subtitles</div>
           <div class="tab" data-tab="tab-smtp">Mail Server</div>
           <div class="tab" data-tab="tab-preset">HandBrake</div>
+          <div class="tab" data-tab="tab-logs">Logs</div>
           <div class="tab" data-tab="tab-about">About</div>
         </div>
 
@@ -738,6 +367,101 @@
           </div>
         </div>
 
+        <!-- Folder Watch -->
+        <div class="tab-content" id="tab-watch">
+          <div class="panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <div>
+                <div class="conv-section-label" style="margin-top:0;">Folder Watch</div>
+                <p style="font-size:13px;color:#888;margin:2px 0 0;">Automatically detect new MKV files and start conversion.</p>
+              </div>
+              <label class="toggle"><input type="checkbox" id="watchEnabled" onchange="toggleWatch(this.checked)"><span class="slider"></span></label>
+            </div>
+            <div id="watchStatus" style="margin-bottom:14px;padding:10px 14px;border-radius:10px;font-size:13px;display:none;"></div>
+            <div class="conv-section-label">Stability wait time</div>
+            <p style="font-size:13px;color:#888;margin-bottom:10px;">How long a file must remain unchanged before it's considered fully copied (in seconds).</p>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <input type="number" id="watchStability" min="10" max="300" step="10" value="30" style="width:100px;">
+              <span style="font-size:13px;color:#888;">seconds</span>
+              <button class="btn btn-primary btn-sm" onclick="saveWatchConfig()">Save</button>
+            </div>
+            <div style="border-top:1px solid var(--border, rgba(255,255,255,0.08));padding-top:14px;margin-top:4px;">
+              <div class="conv-section-label" style="margin-top:0;">How it works</div>
+              <div style="font-size:13px;color:#888;line-height:1.7;">
+                When enabled, AutoConvert watches all configured media directories for new <code style="background:rgba(99,102,241,0.15);padding:2px 6px;border-radius:4px;font-size:12px;">.mkv</code> files. When a new file is detected, it waits for the file to stop changing (stability check), then automatically starts conversion. If a conversion is already running, new files are queued.<br><br>
+                <strong style="color:#ccc;">Note:</strong> When Folder Watch is active, the Scan Interval in the Schedule tab is not needed — realtime watching replaces periodic scanning.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Plex -->
+        <div class="tab-content" id="tab-plex">
+          <div class="panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <div>
+                <div class="conv-section-label" style="margin-top:0;">Plex Library Refresh</div>
+                <p style="font-size:13px;color:#888;margin:2px 0 0;">Automatically refresh Plex libraries after conversion completes.</p>
+              </div>
+              <label class="toggle"><input type="checkbox" id="plexEnabled" onchange="togglePlex(this.checked)"><span class="slider"></span></label>
+            </div>
+            <div id="plexStatus" style="margin-bottom:14px;padding:10px 14px;border-radius:10px;font-size:13px;display:none;"></div>
+            <div class="conv-section-label">Server URL</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <input type="text" id="plexUrl" style="flex:1;" placeholder="http://localhost:32400">
+            </div>
+            <div class="conv-section-label">Plex Token</div>
+            <p style="font-size:13px;color:#888;margin-bottom:8px;">Find your token in Plex settings or <a href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" style="color:#818cf8;">see instructions</a>.</p>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <input type="password" id="plexToken" style="flex:1;" placeholder="Your Plex token">
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+              <button class="btn btn-primary btn-sm" onclick="savePlexConfig()">Save</button>
+              <button class="btn btn-ghost btn-sm" onclick="testPlexConnection()">Test Connection</button>
+              <button class="btn btn-ghost btn-sm" onclick="manualPlexRefresh()">Refresh Now</button>
+              <span id="plexTestResult" style="font-size:12px;display:none;"></span>
+            </div>
+            <div id="plexLibraries" style="display:none;">
+              <div class="conv-section-label">Libraries</div>
+              <p style="font-size:13px;color:#888;margin-bottom:10px;">Select which libraries to refresh. Leave all unchecked to refresh all.</p>
+              <div id="plexLibraryList"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtitles -->
+        <div class="tab-content" id="tab-subs">
+          <div class="panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <div>
+                <div class="conv-section-label" style="margin-top:0;">Automatic Subtitles</div>
+                <p style="font-size:13px;color:#888;margin:2px 0 0;">Download subtitles automatically after conversion using OpenSubtitles.</p>
+              </div>
+              <label class="toggle"><input type="checkbox" id="subsEnabled" onchange="toggleSubtitles(this.checked)"><span class="slider"></span></label>
+            </div>
+            <div class="conv-section-label">API Key</div>
+            <p style="font-size:13px;color:#888;margin-bottom:8px;">Get a free API key at <a href="https://www.opensubtitles.com/consumers" target="_blank" style="color:#818cf8;">opensubtitles.com</a>.</p>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <input type="password" id="subsApiKey" style="flex:1;" placeholder="Your OpenSubtitles API key">
+            </div>
+            <div class="conv-section-label">Languages</div>
+            <p style="font-size:13px;color:#888;margin-bottom:10px;">Select which subtitle languages to download.</p>
+            <div id="subsLanguages" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="nl" class="subs-lang" checked> Dutch (NL)</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="en" class="subs-lang" checked> English (EN)</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="de" class="subs-lang"> German (DE)</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="fr" class="subs-lang"> French (FR)</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="es" class="subs-lang"> Spanish (ES)</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer;"><input type="checkbox" value="pt" class="subs-lang"> Portuguese (PT)</label>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" onclick="saveSubsConfig()">Save</button>
+              <button class="btn btn-ghost btn-sm" onclick="testSubsKey()">Test API Key</button>
+              <span id="subsTestResult" style="font-size:12px;display:none;"></span>
+            </div>
+          </div>
+        </div>
+
         <!-- Mailserver -->
         <div class="tab-content" id="tab-smtp">
           <div class="panel">
@@ -776,6 +500,26 @@
               </label>
             </div>
             <div id="presetList"><div style="color:#555;">Loading...</div></div>
+          </div>
+        </div>
+
+        <!-- Logs -->
+        <div class="tab-content" id="tab-logs">
+          <div class="panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <div>
+                <div class="conv-section-label" style="margin-top:0;">Conversion Log</div>
+                <p style="font-size:13px;color:#888;margin:2px 0 0;">Last 200 lines from daily_convert.log</p>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-ghost btn-sm" onclick="loadLog()">Refresh</button>
+                <button class="btn btn-danger-outline btn-sm" onclick="clearLog()">Clear</button>
+              </div>
+            </div>
+            <div id="logContent" style="background:#0d0d0d;border-radius:10px;padding:16px;max-height:500px;overflow-y:auto;font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.7;color:#d4d4d4;white-space:pre-wrap;word-break:break-all;">
+              <span style="color:#555;">Loading...</span>
+            </div>
+            <div id="logMeta" style="margin-top:8px;font-size:12px;color:#555;text-align:right;"></div>
           </div>
         </div>
 
@@ -927,1051 +671,12 @@
     </div>
   </div>
 
-<script>
-// --- Theme ---
-function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme;
-  const btn = document.getElementById('themeToggle');
-  if (btn) btn.innerHTML = theme === 'light' ? '&#127769; Dark mode' : '&#9728;&#65039; Light mode';
-}
-function toggleTheme() {
-  const current = document.documentElement.dataset.theme;
-  const next = current === 'light' ? 'dark' : 'light';
-  applyTheme(next);
-  localStorage.setItem('autoconvert_theme', next);
-}
-(function initTheme() {
-  const saved = localStorage.getItem('autoconvert_theme');
-  if (saved) { applyTheme(saved); }
-  else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) { applyTheme('light'); }
-  else { applyTheme('dark'); }
-})();
-
-// --- Navigation ---
-const TITLES = { convert:'Conversion', reports:'Reports', recipients:'Recipients', settings:'Settings', changelog:'Version History' };
-
-function navigateTo(section) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
-  const sec = document.getElementById('sec-' + section);
-  const nav = document.querySelector(`.sidebar-nav a[data-section="${section}"]`);
-  if (sec) sec.classList.add('active');
-  if (nav) nav.classList.add('active');
-  document.getElementById('pageTitle').textContent = TITLES[section] || section;
-  localStorage.setItem('autoconvert_section', section);
-  if (section === 'reports') loadDiskSpace();
-  closeSidebar();
-}
-document.getElementById('sidebarNav').addEventListener('click', e => {
-  const a = e.target.closest('a[data-section]'); if (a) navigateTo(a.dataset.section);
-});
-const saved = localStorage.getItem('autoconvert_section');
-if (saved && document.getElementById('sec-' + saved)) navigateTo(saved);
-
-// Settings tabs
-document.getElementById('settingsTabs').addEventListener('click', e => {
-  const tab = e.target.closest('.tab'); if (!tab) return;
-  document.querySelectorAll('#settingsTabs .tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('#sec-settings .tab-content').forEach(c => c.classList.remove('active'));
-  tab.classList.add('active');
-  document.getElementById(tab.dataset.tab).classList.add('active');
-});
-
-function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebarOverlay').classList.toggle('show'); }
-function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('show'); }
-
-// --- Helpers ---
-function toast(msg, error=false, duration=3500) { const el=document.getElementById('toast'); el.textContent=msg; el.className='toast show'+(error?' error':''); clearTimeout(el._tid); el._tid=setTimeout(()=>el.className='toast',duration); }
-function escHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
-function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function fmtBytes(b) { if(!b||b<=0)return '0 B'; const u=['B','KB','MB','GB','TB']; let i=0,s=b; while(s>=1024&&i<u.length-1){s/=1024;i++;} return s.toFixed(i===0?0:1)+' '+u[i]; }
-
-// --- Shared TMDB card renderer ---
-function renderTmdbCard(f, options = {}) {
-  const t = f.tmdb || {};
-  const poster = t.poster
-    ? `<img src="${escAttr(t.poster)}" style="width:50px;border-radius:6px;display:block;" alt="" loading="lazy">`
-    : '<div style="width:50px;height:75px;background:#1e2130;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#444;">No img</div>';
-  const title = t.title || (f.name || '').replace(/\.mkv$/i, '');
-  const year = t.year ? ` (${escHtml(t.year)})` : '';
-  const epLabel = t.ep_label ? `<span class="tmdb-ep">${escHtml(t.ep_label)}</span>` : '';
-  const epName = t.ep_name ? ` — ${escHtml(t.ep_name)}` : '';
-  const rating = t.rating > 0 ? `<span class="tmdb-rating" style="color:${t.rating>=7?'#f5c518':t.rating>=5?'#ff9800':'#e53935'}">★ ${t.rating.toFixed(1)}</span>` : '';
-  const sectionBadge = f.section ? `<span class="tmdb-badge" style="background:${f.section==='movies'?'#1a2332':'#2a1a32'};color:${f.section==='movies'?'#4a9eff':'#c084fc'}">${escHtml(f.section)}</span>` : '';
-  const overview = t.overview ? `<div class="tmdb-overview">${escHtml(t.overview)}...</div>` : '';
-  const cls = options.cls || '';
-  let meta = '';
-  if (options.sizeCompare) {
-    const cmpCls = options.failed ? ' failed' : '';
-    meta = `<div class="tmdb-size-compare${cmpCls}">${options.sizeCompare}</div>`;
-  } else {
-    const sizeStr = typeof f.size === 'number' ? (f.size > 0 ? fmtBytes(f.size) : '') : (f.size || '');
-    meta = sizeStr ? `<div class="tmdb-meta">${escHtml(sizeStr)}</div>` : '';
-  }
-  let progressHtml = '';
-  if (options.progress != null) {
-    const eta = options.eta ? ` — ETA ${escHtml(options.eta)}` : '';
-    progressHtml = `<div class="tmdb-progress"><div class="tmdb-progress-fill" style="width:${options.progress}%"></div></div><div class="tmdb-progress-label">${options.progress.toFixed(1)}%${eta}</div>`;
-  }
-  return `<div class="tmdb-card ${cls}">
-    <div class="tmdb-poster">${poster}</div>
-    <div class="tmdb-info">
-      <div class="tmdb-badges">${sectionBadge}${epLabel}${rating}</div>
-      <div class="tmdb-title">${escHtml(title)}${year}${epName}</div>
-      ${overview}
-      ${meta}
-      ${progressHtml}
-    </div>
-  </div>`;
-}
-
-// --- Disk Space ---
-async function loadDiskSpace() {
-  try {
-    const res = await fetch('/api/disk-space');
-    const data = await res.json();
-    const el = document.getElementById('diskSpaceWarning');
-    const dirs = data.directories || [];
-    if (dirs.length === 0) { el.style.display = 'none'; return; }
-
-    // Deduplicate by mount point (dirs on same volume show same free space)
-    const seen = new Map();
-    dirs.forEach(d => {
-      const key = d.freeGB + '|' + d.totalGB;
-      if (!seen.has(key)) seen.set(key, d);
-    });
-    const unique = [...seen.values()];
-
-    const isLow = data.minFreeGB != null && data.minFreeGB < 10;
-    const isRed = data.minFreeGB != null && data.minFreeGB < 2;
-
-    let bgColor, borderColor, textColor, icon;
-    if (isRed) {
-      bgColor = 'rgba(239,68,68,0.12)'; borderColor = 'rgba(239,68,68,0.35)'; textColor = '#ef4444'; icon = '\u26A0\uFE0F';
-    } else if (isLow) {
-      bgColor = 'rgba(245,158,11,0.12)'; borderColor = 'rgba(245,158,11,0.35)'; textColor = '#f59e0b'; icon = '\u26A0\uFE0F';
-    } else {
-      bgColor = 'rgba(74,158,255,0.06)'; borderColor = 'rgba(74,158,255,0.15)'; textColor = '#888'; icon = '\uD83D\uDCBE';
-    }
-
-    const parts = unique.map(d => {
-      const freeNum = parseFloat(d.freeGB);
-      const totalNum = parseFloat(d.totalGB);
-      const freeLabel = freeNum >= 1024 ? (freeNum / 1024).toFixed(1) + ' TB' : freeNum.toFixed(1) + ' GB';
-      const totalLabel = totalNum >= 1024 ? (totalNum / 1024).toFixed(1) + ' TB' : totalNum.toFixed(0) + ' GB';
-      return freeLabel + ' free of ' + totalLabel;
-    });
-
-    el.className = 'panel';
-    el.style.display = 'block';
-    el.style.background = bgColor;
-    el.style.border = '1px solid ' + borderColor;
-    el.style.color = textColor;
-    el.style.marginBottom = '16px';
-    el.style.fontSize = '13px';
-    el.innerHTML = icon + ' ' + parts.join(' &bull; ');
-  } catch { document.getElementById('diskSpaceWarning').style.display = 'none'; }
-}
-
-// --- Excluded Files & Queue Order ---
-const excludedFiles = new Set();
-let queueOrder = []; // array of file paths in custom order
-
-function excludeFile(path) {
-  excludedFiles.add(path);
-  queueOrder = queueOrder.filter(p => p !== path);
-  loadConvQueue();
-}
-
-function resetExcluded() {
-  excludedFiles.clear();
-  queueOrder = [];
-  loadConvQueue();
-}
-
-let _dragIdx = -1;
-
-function onQueueDragStart(e, idx) {
-  _dragIdx = idx;
-  e.dataTransfer.effectAllowed = 'move';
-  e.target.closest('.queue-item').style.opacity = '0.4';
-}
-
-function onQueueDragEnd(e) {
-  _dragIdx = -1;
-  e.target.closest('.queue-item').style.opacity = '';
-  document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('drag-over'));
-}
-
-function onQueueDragOver(e, idx) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('drag-over'));
-  if (idx !== _dragIdx) e.currentTarget.classList.add('drag-over');
-}
-
-function onQueueDrop(e, idx) {
-  e.preventDefault();
-  document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('drag-over'));
-  if (_dragIdx < 0 || _dragIdx === idx) return;
-  const item = queueOrder.splice(_dragIdx, 1)[0];
-  queueOrder.splice(idx, 0, item);
-  _dragIdx = -1;
-  renderQueue();
-}
-
-let _lastQueueResults = [];
-
-// --- Status ---
-let isConvertRunning = false;
-let progressTmdbData = null;
-let progressTmdbLoading = false;
-async function loadStatus() {
-  try {
-    const res = await fetch('/api/status');
-    const data = await res.json();
-    const dots = [document.getElementById('statusDot'), document.getElementById('statusDotMain')];
-    const text = document.getElementById('statusText');
-    const sidebar = document.getElementById('statusTextSidebar');
-    isConvertRunning = data.running;
-    if (data.running) {
-      dots.forEach(d => d.className = 'status-dot running');
-      text.textContent = 'Converting...';
-      sidebar.textContent = 'Active...';
-      document.getElementById('btnStart').disabled = true;
-      document.getElementById('btnStop').style.display = '';
-      document.getElementById('convQueue').style.display = 'none';
-      loadProgress();
-    } else {
-      dots.forEach(d => d.className = 'status-dot idle');
-      text.textContent = 'Idle';
-      sidebar.textContent = 'Idle';
-      document.getElementById('btnStart').disabled = false;
-      document.getElementById('btnStop').style.display = 'none';
-      // Check if there's a "done" summary to show before going back to queue
-      loadProgress().then(() => {
-        const progEl = document.getElementById('convProgress');
-        if (progEl.style.display === 'none') {
-          // No done summary — show idle queue
-          document.getElementById('convQueue').style.display = '';
-          progressTmdbData = null;
-          progressTmdbLoading = false;
-          loadConvQueue();
-        } else {
-          // Done summary is showing — hide queue
-          document.getElementById('convQueue').style.display = 'none';
-        }
-      });
-    }
-  } catch {}
-}
-
-async function loadConvQueue() {
-  try {
-    const res = await fetch('/api/directories');
-    const data = await res.json();
-    const dirs = data.directories || [];
-    const el = document.getElementById('convQueue');
-
-    const allFiles = [];
-    dirs.forEach(d => {
-      (d.files || []).forEach(f => allFiles.push({ name: f.name, path: f.path, size: f.size, section: d.name }));
-    });
-
-    if (allFiles.length === 0) {
-      const scanning = data.scanning || dirs.some(d => d.scanning);
-      el.innerHTML = scanning
-        ? '<div class="panel" style="color:#888;">Scanning media directories...</div>'
-        : '<div class="panel" style="color:#555;">No MKV files found in media directories.</div>';
-      return;
-    }
-
-    // Show loading state
-    const visibleCount = allFiles.filter(f => !excludedFiles.has(f.path)).length;
-    el.innerHTML = `<div class="panel"><div style="font-size:14px;font-weight:600;color:#e0e0e0;margin-bottom:12px;">Ready for conversion <span style="font-weight:400;color:#888;">(${visibleCount} file${visibleCount!==1?'s':''})</span></div><div style="color:#555;padding:12px 0;">Loading media info...</div></div>`;
-
-    // Fetch TMDB info
-    let results = allFiles;
-    try {
-      const tmdbRes = await fetch('/api/tmdb/lookup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files: allFiles }),
-      });
-      const tmdbData = await tmdbRes.json();
-      if (tmdbData.results) results = tmdbData.results;
-    } catch {}
-
-    _lastQueueResults = results;
-
-    // Initialize queue order if needed (new files or first load)
-    const visiblePaths = results.filter(f => !excludedFiles.has(f.path)).map(f => f.path);
-    if (queueOrder.length === 0) {
-      queueOrder = visiblePaths;
-    } else {
-      // Add any new files not yet in order, remove stale ones
-      const newPaths = visiblePaths.filter(p => !queueOrder.includes(p));
-      queueOrder = queueOrder.filter(p => visiblePaths.includes(p)).concat(newPaths);
-    }
-
-    renderQueue();
-  } catch { document.getElementById('convQueue').innerHTML = ''; }
-}
-
-function renderQueue() {
-  const results = _lastQueueResults;
-  if (!results.length) return;
-  const el = document.getElementById('convQueue');
-  const resultMap = {};
-  results.forEach(f => { resultMap[f.path] = f; });
-
-  // Build ordered filtered list
-  const filteredResults = queueOrder.filter(p => resultMap[p]).map(p => resultMap[p]);
-  const excludedCount = excludedFiles.size;
-  const displayCount = filteredResults.length;
-
-  let html = '';
-  if (excludedCount > 0) {
-    html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:13px;color:#888;background:#1e2130;padding:4px 12px;border-radius:10px;">${excludedCount} file${excludedCount!==1?'s':''} excluded</span><button class="btn btn-ghost btn-sm" onclick="resetExcluded()">Reset</button></div>`;
-  }
-  html += `<div class="panel"><div style="font-size:14px;font-weight:600;color:#e0e0e0;margin-bottom:16px;">Ready for conversion <span style="font-weight:400;color:#888;">(${displayCount} file${displayCount!==1?'s':''})</span></div>`;
-
-  filteredResults.forEach((f, i) => {
-    const filePath = f.path || '';
-    html += `<div class="queue-item" draggable="true" ondragstart="onQueueDragStart(event,${i})" ondragend="onQueueDragEnd(event)" ondragover="onQueueDragOver(event,${i})" ondrop="onQueueDrop(event,${i})" style="position:relative;cursor:grab;">`;
-    html += `<div class="queue-grip" style="position:absolute;top:50%;left:6px;transform:translateY(-50%);color:#444;font-size:11px;line-height:1;letter-spacing:2px;pointer-events:none;">⠿</div>`;
-    html += `<div style="margin-left:4px;">${renderTmdbCard(f)}</div>`;
-    html += `<button onclick="excludeFile('${escAttr(filePath)}')" title="Remove from queue" style="position:absolute;top:10px;right:10px;background:none;border:none;color:#555;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px;line-height:1;" onmouseover="this.style.color='#ef4444';this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.color='#555';this.style.background='none'">&times;</button>`;
-    html += `</div>`;
-  });
-  html += '</div>';
-  el.innerHTML = html;
-}
-
-async function startConvert() {
-  try {
-    const payload = {};
-    if (excludedFiles.size > 0) payload.exclude = [...excludedFiles];
-    if (queueOrder.length > 0) payload.order = queueOrder.filter(p => !excludedFiles.has(p));
-    const res = await fetch('/api/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (data.started) { toast('Conversion started'); excludedFiles.clear(); queueOrder = []; loadStatus(); }
-    else toast(data.error || 'Error', true);
-  } catch { toast('Failed to start', true); }
-}
-
-async function stopConvert() {
-  if (!confirm('Are you sure you want to stop the conversion?')) return;
-  try {
-    const res = await fetch('/api/convert/stop', { method: 'POST' });
-    const data = await res.json();
-    if (data.stopped) { toast('Conversion stopped'); setTimeout(loadStatus, 1000); }
-    else toast(data.error || 'Error', true);
-  } catch { toast('Failed to stop', true); }
-}
-
-// --- Progress ---
-async function loadProgress() {
-  try {
-    const res = await fetch('/api/convert/progress');
-    const p = await res.json();
-    if (p.status === 'idle') { document.getElementById('convProgress').style.display = 'none'; progressTmdbData = null; progressTmdbLoading = false; return; }
-
-    // Show "done" summary after conversion finishes
-    if (p.status === 'done') {
-      document.getElementById('convProgress').style.display = '';
-      document.getElementById('convQueue').style.display = 'none';
-      const files = p.files || [];
-      const completed = p.completed || [];
-      const ok = completed.filter(c => c.status === 'ok').length;
-      const failed = completed.filter(c => c.status !== 'ok').length;
-      const total = p.total || files.length;
-
-      document.getElementById('convBarTotal').style.width = '100%';
-      if (total === 0) {
-        document.getElementById('convBarTotal').style.background = '#888';
-        document.getElementById('convLabelTotal').textContent = p.message || 'No MKV files found to convert';
-      } else {
-        document.getElementById('convBarTotal').style.background = failed > 0 && ok === 0 ? '#ef4444' : '#4ade80';
-        document.getElementById('convLabelTotal').textContent = `Done — ${ok} converted, ${failed} failed`;
-      }
-
-      // Render cards immediately (without TMDB), then enrich with TMDB in background
-      function renderDoneCards() {
-        const completedMap = {};
-        completed.forEach(c => { completedMap[c.index] = c; });
-        let html = '';
-        files.forEach((f, i) => {
-          const tmdbFile = (progressTmdbData && progressTmdbData[i]) || f;
-          const fileData = { ...tmdbFile, size: f.size, section: f.section, name: f.name };
-          if (!fileData.tmdb && tmdbFile.tmdb) fileData.tmdb = tmdbFile.tmdb;
-          const c = completedMap[i];
-          if (c) {
-            const isOk = c.status === 'ok';
-            const statusIcon = isOk ? '<span class="tmdb-status-icon" style="color:#4ade80;">&#10003;</span>' : '<span class="tmdb-status-icon" style="color:#ef4444;">&#10007;</span>';
-            const sizeCompare = isOk ? `${statusIcon} ${escHtml(f.size || '')} → ${escHtml(c.new_size || '')}` : `${statusIcon} Failed`;
-            html += renderTmdbCard(fileData, { cls: isOk ? 'done' : 'failed', sizeCompare, failed: !isOk });
-          } else {
-            html += renderTmdbCard(fileData, { cls: 'pending' });
-          }
-        });
-        document.getElementById('convFileList').innerHTML = html;
-      }
-
-      renderDoneCards();
-
-      // Fetch TMDB in background, re-render when ready
-      if (!progressTmdbData && !progressTmdbLoading && files.length > 0) {
-        progressTmdbLoading = true;
-        fetch('/api/tmdb/lookup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files: files.map(f => ({ name: f.name, size: f.size, section: f.section })) }),
-        }).then(r => r.json()).then(tmdbData => {
-          if (tmdbData.results) { progressTmdbData = tmdbData.results; renderDoneCards(); }
-        }).catch(() => {}).finally(() => { progressTmdbLoading = false; });
-      }
-
-      // Clear done state after timeout, go back to idle queue
-      const doneTimeout = total === 0 ? 10000 : 30000;
-      if (!loadProgress._doneTimer) {
-        loadProgress._doneTimer = setTimeout(async () => {
-          loadProgress._doneTimer = null;
-          progressTmdbData = null; progressTmdbLoading = false;
-          document.getElementById('convBarTotal').style.background = '';
-          try { await fetch('/api/convert/progress/clear', { method: 'POST' }); } catch {}
-          loadStatus();
-        }, doneTimeout);
-      }
-      return;
-    }
-
-    // Clear done timer if we're running again
-    if (loadProgress._doneTimer) { clearTimeout(loadProgress._doneTimer); loadProgress._doneTimer = null; }
-
-    document.getElementById('convProgress').style.display = '';
-    const files = p.files || [];
-    const completed = p.completed || [];
-    const total = p.total || files.length;
-    const current = p.current || 0;
-    const hbPct = p.hb_progress || 0;
-    const hbEta = p.hb_eta || '';
-
-    // Show scanning state when script is starting up (no files yet)
-    if (files.length === 0) {
-      document.getElementById('convBarTotal').style.width = '0%';
-      document.getElementById('convLabelTotal').textContent = 'Scanning media directories...';
-      document.getElementById('convFileList').innerHTML = '<div style="color:#888;padding:12px;font-size:13px;">Looking for MKV files to convert...</div>';
-      return;
-    }
-
-    // Overall bar
-    const pctTotal = total > 0 ? Math.round((completed.length / total) * 100) : 0;
-    document.getElementById('convBarTotal').style.width = pctTotal + '%';
-    document.getElementById('convLabelTotal').textContent = `File ${Math.min(current + 1, total)} of ${total}`;
-
-    // Fetch TMDB data once per conversion run (non-blocking)
-    if (!progressTmdbData && !progressTmdbLoading && files.length > 0) {
-      progressTmdbLoading = true;
-      fetch('/api/tmdb/lookup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files: files.map(f => ({ name: f.name, size: f.size, section: f.section })) }),
-      }).then(r => r.json()).then(tmdbData => {
-        if (tmdbData.results) progressTmdbData = tmdbData.results;
-      }).catch(() => {}).finally(() => { progressTmdbLoading = false; });
-    }
-
-    // Build completed index for quick lookup
-    const completedMap = {};
-    completed.forEach(c => { completedMap[c.index] = c; });
-
-    // Render TMDB cards for all files
-    let html = '';
-    files.forEach((f, i) => {
-      const tmdbFile = (progressTmdbData && progressTmdbData[i]) || f;
-      const fileData = { ...tmdbFile, size: f.size, section: f.section, name: f.name };
-      if (!fileData.tmdb && tmdbFile.tmdb) fileData.tmdb = tmdbFile.tmdb;
-
-      if (completedMap[i]) {
-        // Completed file
-        const c = completedMap[i];
-        const ok = c.status === 'ok';
-        const statusIcon = ok ? '<span class="tmdb-status-icon" style="color:#4ade80;">&#10003;</span>' : '<span class="tmdb-status-icon" style="color:#ef4444;">&#10007;</span>';
-        const origSize = f.size || '';
-        const newSize = c.new_size || '';
-        const sizeCompare = ok ? `${statusIcon} ${escHtml(origSize)} → ${escHtml(newSize)}` : `${statusIcon} Failed`;
-        html += renderTmdbCard(fileData, { cls: ok ? 'done' : 'failed', sizeCompare, failed: !ok });
-      } else if (i === current) {
-        // Currently converting
-        html += renderTmdbCard(fileData, { cls: 'active', progress: hbPct, eta: hbEta });
-      } else {
-        // Pending
-        html += renderTmdbCard(fileData, { cls: 'pending' });
-      }
-    });
-    document.getElementById('convFileList').innerHTML = html;
-  } catch {}
-}
-
-// --- Directories ---
-async function loadDirectories() {
-  try {
-    const res = await fetch('/api/directories');
-    const data = await res.json();
-    const dirs = data.directories || [];
-    const container = document.getElementById('dirContainer');
-    if (!dirs.length) { container.innerHTML = '<div class="panel" style="color:#555;">No directories configured. Add one below.</div>'; return; }
-    container.innerHTML = dirs.map(d => {
-      const statusColor = !d.exists ? '#ef4444' : d.fileCount > 0 ? '#4ade80' : '#555';
-      const countLabel = d.scanning ? 'Scanning...' : `${d.fileCount} MKV`;
-      const removeBtn = `<button class="btn-icon delete" onclick="removeMediaDir('${escAttr(d.path)}')" title="Remove" style="margin-left:auto;font-size:16px;color:#555;background:none;border:none;cursor:pointer;padding:2px 6px;">&times;</button>`;
-      return `<div class="dir-header" style="display:flex;align-items:center;"><span class="dir-dot ${d.exists?'exists':'missing'}"></span><span class="dir-name">${escHtml(d.name)}</span><span class="dir-path">${escHtml(d.path)}</span><span class="dir-count" style="color:${statusColor}">${countLabel}</span>${removeBtn}</div>`;
-    }).join('');
-  } catch { document.getElementById('dirContainer').innerHTML = '<div class="panel" style="color:#555;">Could not load directories.</div>'; }
-}
-
-async function addMediaDir() {
-  const input = document.getElementById('newMediaDir');
-  const dir = input.value.trim();
-  if (!dir) { toast('Enter a directory path', true); return; }
-  if (!dir.startsWith('/')) { toast('Path must be absolute (start with /)', true); return; }
-  try {
-    const res = await fetch('/api/media-dirs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dir }) });
-    const d = await res.json();
-    if (d.ok) { toast('Directory added'); input.value = ''; loadDirectories(); }
-    else toast(d.error || 'Error', true);
-  } catch { toast('Failed to add directory', true); }
-}
-
-async function removeMediaDir(dir) {
-  if (!confirm(`Remove "${dir}" from scan list?`)) return;
-  try {
-    const res = await fetch('/api/media-dirs', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dir }) });
-    const d = await res.json();
-    if (d.ok) { toast('Directory removed'); loadDirectories(); }
-    else toast(d.error || 'Error', true);
-  } catch { toast('Failed to remove directory', true); }
-}
-
-// --- Schedule ---
-function initScheduleSelects() {
-  const h=document.getElementById('schedHour'), m=document.getElementById('schedMin');
-  for(let i=0;i<24;i++) h.innerHTML+=`<option value="${i}">${String(i).padStart(2,'0')}</option>`;
-  for(let i=0;i<60;i+=5) m.innerHTML+=`<option value="${i}">${String(i).padStart(2,'0')}</option>`;
-}
-async function loadSchedule() {
-  try {
-    const res=await fetch('/api/schedule'); const d=await res.json();
-    document.getElementById('schedHour').value=d.hour;
-    const s=Math.round(d.minute/5)*5;
-    document.getElementById('schedMin').value=s>=60?55:s;
-    document.getElementById('schedScanInterval').value=d.scanInterval||0;
-    // Email schedule
-    initEmailTimeSelects();
-    if(d.emailHour!==''&&d.emailHour!==undefined&&d.emailHour!==null){
-      document.getElementById('schedEmailMode').value='scheduled';
-      document.getElementById('emailTimeWrap').style.display='inline';
-      document.getElementById('schedEmailHour').value=d.emailHour;
-      document.getElementById('schedEmailMin').value=Math.round((d.emailMinute||0)/5)*5;
-    } else {
-      document.getElementById('schedEmailMode').value='immediate';
-      document.getElementById('emailTimeWrap').style.display='none';
-    }
-  } catch {}
-}
-function initEmailTimeSelects() {
-  const eh=document.getElementById('schedEmailHour'), em=document.getElementById('schedEmailMin');
-  if(eh.options.length>0) return;
-  for(let i=0;i<24;i++){const o=document.createElement('option');o.value=i;o.textContent=String(i).padStart(2,'0');eh.appendChild(o);}
-  for(let i=0;i<60;i+=5){const o=document.createElement('option');o.value=i;o.textContent=String(i).padStart(2,'0');em.appendChild(o);}
-}
-function toggleEmailTime(mode) {
-  document.getElementById('emailTimeWrap').style.display=mode==='scheduled'?'inline':'none';
-}
-async function saveSchedule() {
-  const hour=parseInt(document.getElementById('schedHour').value), minute=parseInt(document.getElementById('schedMin').value);
-  const scanInterval=parseInt(document.getElementById('schedScanInterval').value)||0;
-  const emailMode=document.getElementById('schedEmailMode').value;
-  let emailHour='', emailMinute=0;
-  if(emailMode==='scheduled'){
-    emailHour=parseInt(document.getElementById('schedEmailHour').value);
-    emailMinute=parseInt(document.getElementById('schedEmailMin').value)||0;
-  }
-  try { const res=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hour,minute,scanInterval,emailHour,emailMinute})}); const d=await res.json(); if(d.ok) toast('Schedule saved'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
-}
-
-// --- Scan ---
-async function scanDirectories() {
-  const btn=document.getElementById('btnScan');
-  btn.disabled=true; btn.textContent='Scanning…';
-  try { await fetch('/api/scan',{method:'POST'}); } catch {}
-  setTimeout(()=>{btn.disabled=false;btn.textContent='Scan directories';loadConvQueue();},2000);
-}
-
-// --- App Settings ---
-async function loadAppSettings() {
-  try {
-    const res=await fetch('/api/app-settings'); const d=await res.json();
-    document.getElementById('appPort').value=d.port;
-    document.getElementById('appBackupDir').value=d.backupDir||'';
-    document.getElementById('appServerUrl').value=d.serverUrl||'';
-    document.getElementById('appAdminEmail').value=d.adminEmail||'';
-    document.getElementById('downloadNotifyToggle').checked=d.downloadNotify!==false;
-    const ad=d.autoDelete!==false;
-    document.getElementById('appAutoDelete').checked=ad;
-    document.getElementById('autoDeleteWarning').style.display=ad?'block':'none';
-  } catch {}
-}
-async function toggleAutoDelete(on) {
-  document.getElementById('autoDeleteWarning').style.display=on?'block':'none';
-  try {
-    const res=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({autoDelete:on})});
-    const d=await res.json();
-    if(d.ok) toast(on?'Auto-delete enabled':'Auto-delete disabled');
-    else toast(d.error||'Error',true);
-  } catch { toast('Failed to save',true); }
-}
-async function saveServerUrl() {
-  const serverUrl=document.getElementById('appServerUrl').value.trim();
-  try { const res=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({serverUrl})}); const d=await res.json(); if(d.ok) toast('Server URL saved'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
-}
-async function saveAdminEmail() {
-  const adminEmail=document.getElementById('appAdminEmail').value.trim();
-  try { const res=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({adminEmail})}); const d=await res.json(); if(d.ok) toast('Admin email saved'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
-}
-async function saveDownloadNotify() {
-  const downloadNotify=document.getElementById('downloadNotifyToggle').checked;
-  try { const res=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({downloadNotify})}); const d=await res.json(); if(d.ok) toast(downloadNotify?'Download notifications enabled':'Download notifications disabled'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
-}
-async function saveAppSettings() {
-  const port=parseInt(document.getElementById('appPort').value,10);
-  if(!port||port<1||port>65535){toast('Port must be between 1 and 65535',true);return;}
-  const backupDir=document.getElementById('appBackupDir').value.trim();
-  try { const res=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({port,backupDir})}); const d=await res.json(); if(d.ok){toast('Settings saved');if(d.restart)document.getElementById('appPortRestart').style.display='inline';loadBackups();}else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
-}
-
-async function browseBackupDir() {
-  const cur=document.getElementById('appBackupDir').value.trim();
-  try {
-    const res=await fetch('/api/choose-directory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({default:cur})});
-    const d=await res.json();
-    if(d.ok&&d.path) {
-      document.getElementById('appBackupDir').value=d.path;
-      const sv=await fetch('/api/app-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({backupDir:d.path})});
-      const r=await sv.json();
-      if(r.ok){toast('Backup directory saved');loadBackups();}else toast(r.error||'Error',true);
-    }
-  } catch { toast('Could not open folder picker',true); }
-}
-
-// --- SMTP ---
-async function loadSmtp() {
-  try { const res=await fetch('/api/smtp'); const d=await res.json(); document.getElementById('smtpHost').value=d.host; document.getElementById('smtpPort').value=d.port; document.getElementById('smtpUser').value=d.user; document.getElementById('smtpPassword').value=d.password; document.getElementById('smtpFrom').value=d.from; document.getElementById('smtpTls').checked=d.tls; document.getElementById('smtpStarttls').checked=d.starttls; } catch {}
-}
-async function saveSmtp() {
-  const smtp={host:document.getElementById('smtpHost').value.trim(),port:parseInt(document.getElementById('smtpPort').value,10),user:document.getElementById('smtpUser').value.trim(),password:document.getElementById('smtpPassword').value,from:document.getElementById('smtpFrom').value.trim(),tls:document.getElementById('smtpTls').checked,starttls:document.getElementById('smtpStarttls').checked};
-  if(!smtp.host||!smtp.user||!smtp.from){toast('Enter host, username, and sender',true);return;}
-  try { const res=await fetch('/api/smtp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(smtp)}); const d=await res.json(); if(d.ok) toast('Mail server saved'); else toast(d.error||'Error',true); } catch { toast('Failed to save',true); }
-}
-async function testSmtpConnection() {
-  const el=document.getElementById('smtpTestResult');
-  el.style.display='inline'; el.style.color='#888'; el.textContent='Testing...';
-  try {
-    const res=await fetch('/api/test-smtp',{method:'POST'});
-    const d=await res.json();
-    if(d.ok){el.style.color='#4ade80';el.textContent='Connection OK';}
-    else{el.style.color='#ef4444';el.textContent=d.error||'Failed';}
-  } catch {el.style.color='#ef4444';el.textContent='Failed';}
-  setTimeout(()=>el.style.display='none',4000);
-}
-let _modalResolve=null;
-function openModal(title,placeholder){
-  document.getElementById('modalTitle').textContent=title;
-  const inp=document.getElementById('modalInput');
-  inp.value='';inp.placeholder=placeholder||'';
-  const ov=document.getElementById('modalOverlay');
-  ov.style.display='flex';
-  inp.focus();
-  return new Promise(r=>{_modalResolve=r;});
-}
-function closeModal(val){
-  document.getElementById('modalOverlay').style.display='none';
-  if(_modalResolve){_modalResolve(val);_modalResolve=null;}
-}
-async function testSmtp() {
-  const email=await openModal('Send test email to:','user@example.com');
-  if(!email||!email.trim()) return;
-  const el=document.getElementById('smtpTestResult');
-  el.style.display='inline'; el.style.color='#888'; el.textContent='Sending...';
-  try {
-    const res=await fetch('/api/test-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.trim()})});
-    const d=await res.json();
-    if(d.ok){el.style.color='#4ade80';el.textContent='Sent!';}
-    else{el.style.color='#ef4444';el.textContent=d.error||'Failed';}
-  } catch {el.style.color='#ef4444';el.textContent='Failed';}
-  setTimeout(()=>el.style.display='none',4000);
-}
-
-// --- Recipients ---
-let recipients = [];
-async function loadRecipients() { try { const res=await fetch('/api/recipients'); const d=await res.json(); recipients=d.recipients; renderRecipients(); } catch {} }
-function renderRecipients() {
-  document.getElementById('emailList').innerHTML = recipients.map((r,i) =>
-    `<li class="${r.active?'':'inactive'}"><label class="toggle"><input type="checkbox" ${r.active?'checked':''} onchange="toggleEmail('${r.email}')"><span class="slider"></span></label><span class="email-addr">${r.email}</span><div class="email-actions"><button class="btn-icon" onclick="testEmail('${r.email}')" title="Test email">&#9993;</button><button class="btn-icon delete" onclick="removeEmail(${i})" title="Delete">&times;</button></div></li>`
-  ).join('');
-}
-async function saveRecipients() { try { const res=await fetch('/api/recipients',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({recipients})}); const d=await res.json(); if(!d.ok) toast(d.error||'Error',true); } catch { toast('Failed to save',true); } }
-async function addEmail() {
-  const input=document.getElementById('newEmail'), email=input.value.trim();
-  if(!email) return;
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){toast('Invalid email address',true);return;}
-  if(recipients.find(r=>r.email===email)){toast('Address already exists',true);return;}
-  recipients.push({email,active:true}); renderRecipients(); input.value=''; await saveRecipients(); toast('Recipient added');
-}
-async function removeEmail(i) { const rm=recipients.splice(i,1)[0]; renderRecipients(); await saveRecipients(); toast(`${rm.email} removed`); }
-async function toggleEmail(email) {
-  try { const res=await fetch('/api/recipients/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})}); const d=await res.json();
-    if(d.ok){const r=recipients.find(r=>r.email===email);if(r)r.active=d.active;renderRecipients();toast(`${email} ${d.active?'activated':'deactivated'}`);}else toast(d.error||'Error',true);
-  } catch { toast('Toggle failed',true); }
-}
-async function testEmail(email) {
-  toast(`Sending test email to ${email}...`);
-  try { const res=await fetch('/api/test-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})}); const d=await res.json(); if(d.ok) toast(`Sent to ${email}`); else toast(d.error||'Error',true); } catch { toast('Error',true); }
-}
-async function testAllActive() {
-  const active=recipients.filter(r=>r.active); if(!active.length){toast('No active recipients',true);return;}
-  document.getElementById('btnTestAll').disabled=true; let ok=0,fail=0;
-  for(const r of active){try{const res=await fetch('/api/test-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:r.email})});const d=await res.json();if(d.ok)ok++;else fail++;}catch{fail++;}}
-  document.getElementById('btnTestAll').disabled=false;
-  if(!fail) toast(`Sent to ${ok} recipient(s)`); else toast(`${ok} sent, ${fail} failed`,true);
-}
-
-// --- Presets ---
-function fmtEncoder(e){const m={'vt_h265_10bit':'H.265 10-bit (VideoToolbox)','vt_h265':'H.265 (VideoToolbox)','vt_h264':'H.264 (VideoToolbox)','x265_10bit':'H.265 10-bit (x265)','x265':'H.265 (x265)','x264':'H.264 (x264)','ca_aac':'AAC (CoreAudio)','av_aac':'AAC','copy:aac':'AAC Passthru','ac3':'AC3','eac3':'E-AC3','copy':'Auto Passthru'};return m[e]||e;}
-function fmtFormat(f){const m={'av_mp4':'MP4','av_mkv':'MKV','av_webm':'WebM'};return m[f]||f;}
-async function loadPresets() {
-  try {
-    const res=await fetch('/api/presets'); const d=await res.json();
-    const container=document.getElementById('presetList');
-    if(!d.presets||!d.presets.length){container.innerHTML='<div style="color:#555;">No presets. Upload a HandBrake preset file.</div>';return;}
-    container.innerHTML=d.presets.map(p=>{
-      const dt=p.details||{};
-      const qualLabel=dt.videoQualityType===2?`Quality: ${dt.videoQuality}`:`Bitrate: ${dt.videoBitrate} kbps`;
-      const mod=p.modified?new Date(p.modified).toLocaleString('en-US',{timeZone:'Europe/Amsterdam'}):'';
-      const rows=[['Format',fmtFormat(dt.format)],['Video',fmtEncoder(dt.videoEncoder)+(dt.videoPreset?` (${dt.videoPreset})`:'')],['Quality',qualLabel],['Resolution',dt.resolution||'Auto'],['Audio',fmtEncoder(dt.audioEncoder)+` ${dt.audioBitrate}kbps ${dt.audioMixdown}`],['Subtitles',dt.subtitles],['Chapters',dt.chapterMarkers?'Yes':'No'],['Multi-pass',dt.multiPass?'Yes':'No']];
-      const grid=rows.map(([k,v])=>`<div class="preset-card-row"><span>${k}</span><span>${escHtml(v)}</span></div>`).join('');
-      const actions=[];
-      if(!p.active) actions.push(`<button class="btn btn-primary btn-sm" onclick="activatePreset('${escAttr(p.filename)}')">Set as active</button>`);
-      if(!p.active) actions.push(`<button class="btn btn-ghost btn-sm" style="color:#ef4444;" onclick="deletePreset('${escAttr(p.filename)}')">Delete</button>`);
-      actions.push(`<button class="btn btn-ghost btn-sm" onclick="downloadPreset('${escAttr(p.filename)}')">Download</button>`);
-      return `<div class="preset-card${p.active?' active':''}"><div class="preset-card-header"><span class="preset-card-name">${escHtml(p.name)}</span>${p.active?'<span class="preset-card-badge">Active</span>':''}</div>${p.description?`<div style="font-size:12px;color:#888;margin-bottom:8px;">${escHtml(p.description)}</div>`:''}<div style="font-size:11px;color:#555;margin-bottom:10px;">${escHtml(p.filename)}${mod?' &middot; '+mod:''}</div>${grid}<div class="preset-card-actions">${actions.join('')}</div></div>`;
-    }).join('');
-  } catch { document.getElementById('presetList').innerHTML='<div style="color:#555;">Could not load presets.</div>'; }
-}
-async function uploadPreset(input) {
-  const file=input.files[0]; if(!file) return;
-  if(!file.name.endsWith('.json')){toast('Only JSON files',true);input.value='';return;}
-  try {
-    const text=await file.text(); JSON.parse(text);
-    let res=await fetch('/api/presets',{method:'POST',headers:{'Content-Type':'application/json'},body:text});
-    let d=await res.json();
-    if(d.exists&&confirm(`Preset "${d.filename}" already exists. Overwrite?`)){
-      res=await fetch('/api/presets?overwrite=true',{method:'POST',headers:{'Content-Type':'application/json'},body:text});
-      d=await res.json();
-    }
-    if(d.ok){toast(`Preset "${d.name}" uploaded`);loadPresets();}
-    else if(!d.exists) toast(d.error||'Error',true);
-  } catch { toast('Invalid JSON',true); } input.value='';
-}
-async function activatePreset(filename) {
-  try {
-    const res=await fetch(`/api/presets/${encodeURIComponent(filename)}/activate`,{method:'POST'});
-    const d=await res.json();
-    if(d.ok){toast('Preset activated');loadPresets();}else toast(d.error||'Error',true);
-  } catch { toast('Error',true); }
-}
-async function deletePreset(filename) {
-  if(!confirm(`Delete preset "${filename}"?`)) return;
-  try {
-    const res=await fetch(`/api/presets/${encodeURIComponent(filename)}`,{method:'DELETE'});
-    const d=await res.json();
-    if(d.ok){toast('Preset deleted');loadPresets();}else toast(d.error||'Error',true);
-  } catch { toast('Error',true); }
-}
-function downloadPreset(filename) { window.open(`/api/presets/${encodeURIComponent(filename)}/download`,'_blank'); }
-
-// --- Backup ---
-async function loadBackups() {
-  try {
-    const res=await fetch('/api/backups'); const d=await res.json(); const list=document.getElementById('backupList');
-    if(!d.backups||!d.backups.length){list.innerHTML='<div style="color:#555;font-size:13px;">No backups available.</div>';return;}
-    list.innerHTML=d.backups.map(b=>{
-      const date=b.created?new Date(b.created).toLocaleString('en-US',{timeZone:'Europe/Amsterdam'}):'';
-      return `<div class="backup-item"><span class="backup-name">${date||escHtml(b.filename)}</span><span class="backup-size">${fmtBytes(b.size)}</span><button class="btn btn-ghost btn-sm" onclick="revealBackup('${escAttr(b.filename)}')">Show in Finder</button><button class="btn btn-ghost btn-sm" onclick="restoreBackup('${escAttr(b.filename)}')">Restore</button><button class="btn-icon delete" onclick="deleteBackup('${escAttr(b.filename)}')" style="font-size:18px;">&times;</button></div>`;
-    }).join('');
-  } catch { document.getElementById('backupList').innerHTML='<div style="color:#555;font-size:13px;">Could not load backups.</div>'; }
-}
-async function createBackup() {
-  try { const res=await fetch('/api/backups',{method:'POST'}); const d=await res.json(); if(d.ok){toast('Backup created');loadBackups();}else toast(d.error||'Error',true); } catch { toast('Backup failed',true); }
-}
-async function restoreBackup(filename) {
-  if(!confirm('Are you sure you want to restore this backup? Current settings will be overwritten.')) return;
-  try { const res=await fetch('/api/backups/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename})}); const d=await res.json();
-    if(d.ok){toast('Backup restored');loadSmtp();loadSchedule();loadRecipients();loadPresets();}else toast(d.error||'Error',true);
-  } catch { toast('Failed to restore',true); }
-}
-async function revealBackup(filename) {
-  try { await fetch('/api/backups/reveal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename})}); } catch { toast('Could not open Finder',true); }
-}
-async function deleteBackup(filename) {
-  if(!confirm('Delete backup?')) return;
-  try { const res=await fetch(`/api/backups/${encodeURIComponent(filename)}`,{method:'DELETE'}); const d=await res.json(); if(d.ok){toast('Backup deleted');loadBackups();}else toast(d.error||'Error',true); } catch { toast('Error',true); }
-}
-
-// --- Export / Import ---
-function exportSettings() { window.open('/api/export','_blank'); }
-async function importSettings(input) {
-  const file=input.files[0]; if(!file) return;
-  try {
-    const text=await file.text(); const data=JSON.parse(text);
-    if(data.type!=='autoconvert-export'){toast('Invalid export file',true);input.value='';return;}
-    if(!confirm('Import settings? Current config will be overwritten.')) {input.value='';return;}
-    const res=await fetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:text}); const d=await res.json();
-    if(d.ok){toast('Settings imported');loadSmtp();loadSchedule();loadRecipients();loadPresets();}else toast(d.error||'Error',true);
-  } catch { toast('Invalid file',true); } input.value='';
-}
-
-// --- Reports ---
-function fmtSize(bytes) {
-  if(!bytes||bytes<=0) return '0 B';
-  const u=['B','KB','MB','GB','TB']; let i=0,s=bytes;
-  while(s>=1024&&i<u.length-1){s/=1024;i++;}
-  return s.toFixed(i<=1?0:1)+' '+u[i];
-}
-async function loadReportStats() {
-  try {
-    const res=await fetch('/api/reports/stats'); const s=await res.json();
-    const total=s.movies+s.series;
-    if(total===0){document.getElementById('reportStats').style.display='none';return;}
-    document.getElementById('reportStats').style.display='';
-    document.getElementById('statMovies').textContent=s.movies;
-    document.getElementById('statSeries').textContent=s.series;
-    document.getElementById('statProcessed').textContent=fmtSize(s.totalOld);
-    document.getElementById('statSaved').textContent=fmtSize(s.saved);
-    const savedPct=s.totalOld>0?Math.round(((s.totalOld-s.totalNew)/s.totalOld)*100):0;
-    document.getElementById('statSavedPct').textContent=savedPct>0?'('+savedPct+'%)':'';
-    document.getElementById('statOldSize').textContent=fmtSize(s.totalOld);
-    document.getElementById('statNewSize').textContent=fmtSize(s.totalNew);
-    const barPct=s.totalOld>0?Math.round((s.totalNew/s.totalOld)*100):0;
-    document.getElementById('statBarNew').style.width=barPct+'%';
-    const barLabel=document.getElementById('statBarPctLabel');
-    if(savedPct>0){barLabel.textContent=fmtSize(s.totalOld)+' → '+fmtSize(s.totalNew)+' ('+savedPct+'% smaller)';barLabel.style.display='';}
-    else{barLabel.style.display='none';}
-  } catch {}
-}
-let reportsOffset=0; const REPORTS_LIMIT=10; let reportsHasMore=true;
-async function loadReports() { reportsOffset=0; reportsHasMore=true; document.getElementById('reportsContainer').innerHTML=''; loadReportStats(); loadDiskSpace(); await loadMoreReports(); }
-async function loadMoreReports() {
-  try {
-    const res=await fetch(`/api/reports?offset=${reportsOffset}&limit=${REPORTS_LIMIT}`); const d=await res.json(); const reports=d.reports||[];
-    if(!reports.length){reportsHasMore=false;document.getElementById('btnLoadMore').style.display='none';if(reportsOffset===0)document.getElementById('reportsContainer').innerHTML='<div class="report-empty">No reports available.</div>';return;}
-    const container=document.getElementById('reportsContainer');
-    reports.forEach((r,i)=>container.appendChild(renderReportDay(r,!(reportsOffset===0&&i===0))));
-    reportsOffset+=reports.length; reportsHasMore=reports.length>=REPORTS_LIMIT;
-    document.getElementById('btnLoadMore').style.display=reportsHasMore?'':'none';
-  } catch { if(reportsOffset===0)document.getElementById('reportsContainer').innerHTML='<div class="report-empty">Could not load reports.</div>'; document.getElementById('btnLoadMore').style.display='none'; }
-}
-
-function renderReportDay(report, collapsed) {
-  const div=document.createElement('div'); div.className='report-day'+(collapsed?' collapsed':'');
-  const converted=report.converted||[], failed=report.failed||[], dupes=report.dupes||[], date=report.date||'';
-  const header=document.createElement('div'); header.className='report-day-header';
-  const emailedBadge=report.emailed?`<span class="report-summary-badge" style="background:#dcfce7;color:#16a34a;" title="Sent ${new Date(report.emailed).toLocaleString()}">✓ Sent</span>`:'';
-  header.innerHTML=`<span class="report-day-chevron">&#9660;</span><span class="report-day-date">${escHtml(date)}</span><div class="report-day-badges">${emailedBadge}${converted.length?`<span class="report-summary-badge converted">${converted.length} converted</span>`:''}${failed.length?`<span class="report-summary-badge failed">${failed.length} failed</span>`:''}${dupes.length?`<span class="report-summary-badge dupes">${dupes.length} duplicates</span>`:''}</div><button class="report-day-delete" title="Resend email" onclick="event.stopPropagation();resendReport('${escAttr(report.filename||'')}',this)" style="color:#818cf8;">&#9993;</button><button class="report-day-delete" title="Delete" onclick="event.stopPropagation();deleteReport('${escAttr(report.filename||'')}',this)">&#128465;</button>`;
-  header.addEventListener('click',e=>{if(!e.target.closest('.report-day-delete'))div.classList.toggle('collapsed');});
-  div.appendChild(header);
-  const content=document.createElement('div'); content.className='report-day-content';
-  if(converted.length){content.innerHTML+='<div class="report-section-label">Converted</div>';converted.forEach(item=>{const el=renderReportItem(item,'converted');content.appendChild(el);if(!item.mp4_path&&item.section&&item.basename){fetch('/api/find-mp4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({section:item.section,basename:item.basename})}).then(r=>r.json()).then(d=>{if(d.mp4_path){const a=document.createElement('a');a.href='/api/download?path='+encodeURIComponent(d.mp4_path);a.className='report-download-btn';a.title='Download MP4';a.textContent='⬇';el.appendChild(a);}}).catch(()=>{});}});}
-  if(failed.length){content.innerHTML+='<div class="report-section-label">Failed</div>';failed.forEach(item=>content.appendChild(renderReportItem(item,'failed')));}
-  if(dupes.length){content.innerHTML+='<div class="report-section-label">Duplicates</div>';dupes.forEach(item=>{const d=document.createElement('div');d.className='report-dupe-item';const n=item.name||item.filename||JSON.stringify(item);d.innerHTML=`<span class="dupe-name" title="${escAttr(n)}">${escHtml(n)}</span>`;content.appendChild(d);});}
-  if(!converted.length&&!failed.length&&!dupes.length) content.innerHTML='<div class="report-empty" style="padding:14px;">No items.</div>';
-  div.appendChild(content); return div;
-}
-
-function renderReportItem(item, type) {
-  const div=document.createElement('div'); div.className='report-item'+(type==='failed'?' failed':'');
-  if(type==='failed'){div.style.cursor='pointer';div.title='Click for details';}
-  const tmdb=item.tmdb||{};
-  const poster=tmdb.poster?`<img class="report-poster" src="${escAttr(tmdb.poster)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'report-poster-placeholder\\'>&#127910;</div>'">`:`<div class="report-poster-placeholder">&#127910;</div>`;
-  const title=tmdb.title||item.basename||'Unknown';
-  const year=tmdb.year?`<span class="year">(${tmdb.year})</span>`:'';
-  let badges='';
-  if(item.section){const c=item.section==='movies'?'movies':'series';const l=item.section==='movies'?'Movie':'Series';badges+=`<span class="report-badge ${c}">${l}</span>`;}
-  if(tmdb.ep_label) badges+=`<span class="report-badge episode">${escHtml(tmdb.ep_label)}</span>`;
-  if(tmdb.rating&&tmdb.rating>0) badges+=`<span class="report-badge rating">${tmdb.rating}</span>`;
-  let sizeHtml=''; if(type!=='failed'&&(item.old_size||item.new_size)) sizeHtml=`<div class="report-item-size">${escHtml(item.old_size||'?')} &#8594; ${escHtml(item.new_size||'?')}</div>`;
-  let durHtml=''; if(item.duration&&parseInt(item.duration)>0) durHtml=`<span class="report-item-duration">${item.duration} min</span>`;
-  let fnHtml=''; if(type==='failed'&&item.basename) fnHtml=`<div class="report-item-filename">${escHtml(item.basename)}</div>`;
-  let dlHtml=''; if(type==='converted'&&item.mp4_path) dlHtml=`<a href="/api/download?path=${encodeURIComponent(item.mp4_path)}" class="report-download-btn" title="Download MP4">⬇</a>`;
-  div.innerHTML=`${poster}<div class="report-item-info"><div class="report-item-title">${escHtml(title)}${year}</div>${badges?`<div class="report-item-meta">${badges}</div>`:''}${sizeHtml}${durHtml?`<div class="report-item-meta">${durHtml}</div>`:''}${fnHtml}</div>${dlHtml}`;
-  if(type==='failed') div.addEventListener('click',()=>showFailDetail(item));
-  return div;
-}
-
-function showFailDetail(item){
-  const tmdb=item.tmdb||{};
-  const title=tmdb.title||item.basename||'Unknown';
-  const year=tmdb.year?` (${tmdb.year})`:'';
-  document.getElementById('failDetailTitle').textContent=title+year;
-  const meta=[];
-  if(item.section) meta.push(item.section==='movies'?'Movie':'Series');
-  if(item.size) meta.push(item.size);
-  if(item.basename) meta.push(item.basename);
-  document.getElementById('failDetailMeta').textContent=meta.join(' · ');
-  document.getElementById('failDetailReason').textContent=item.reason||'No error details available. The conversion may have failed silently or the log was not captured.';
-  document.getElementById('failDetailModal').style.display='flex';
-}
-document.getElementById('failDetailModal').addEventListener('click',e=>{if(e.target.id==='failDetailModal')e.target.style.display='none';});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('failDetailModal').style.display==='flex')document.getElementById('failDetailModal').style.display='none';});
-
-let _resendId=null, _resendBtn=null;
-function resendReport(id, btn) {
-  _resendId=id; _resendBtn=btn;
-  document.getElementById('resendEmail').value='';
-  const modal=document.getElementById('resendModal');
-  modal.style.display='flex';
-  setTimeout(()=>document.getElementById('resendEmail').focus(),50);
-}
-function closeResendModal() { document.getElementById('resendModal').style.display='none'; _resendId=null; _resendBtn=null; }
-document.getElementById('resendModal').addEventListener('click',e=>{if(e.target.id==='resendModal')closeResendModal();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('resendModal').style.display==='flex')closeResendModal();});
-async function confirmResend() {
-  if(!_resendId) return;
-  const id=_resendId, btn=_resendBtn;
-  const email=document.getElementById('resendEmail').value.trim();
-  closeResendModal();
-  if(btn){btn.textContent='…';btn.disabled=true;}
-  try {
-    const body=email?{email}:{};
-    const res=await fetch(`/api/reports/${encodeURIComponent(id)}/resend`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const d=await res.json();
-    if(d.ok) {
-      toast(`✓ Report sent to ${d.sentTo.join(', ')}`, false, 5000);
-      if(btn){btn.textContent='✓';btn.style.color='#22c55e';setTimeout(()=>{btn.textContent='✉';btn.style.color='';btn.disabled=false;},3000);}
-    } else {
-      toast(d.error||'Failed to send report',true);
-      if(btn){btn.textContent='✉';btn.disabled=false;}
-    }
-  } catch {
-    toast('Failed to send report',true);
-    if(btn){btn.textContent='✉';btn.disabled=false;}
-  }
-}
-let _confirmResolve=null;
-function showConfirm({title,desc,icon,iconBg,btnText,btnColor}){
-  document.getElementById('confirmTitle').textContent=title;
-  document.getElementById('confirmDesc').textContent=desc||'';
-  const ic=document.getElementById('confirmIcon'); ic.textContent=icon||'⚠️'; ic.style.background=iconBg||'rgba(239,68,68,0.15)';
-  const ab=document.getElementById('confirmActionBtn'); ab.textContent=btnText||'Confirm'; ab.style.background=btnColor||'#ef4444'; ab.style.color='#fff';
-  document.getElementById('confirmModal').style.display='flex';
-  return new Promise(r=>{_confirmResolve=r;});
-}
-function resolveConfirm(val){document.getElementById('confirmModal').style.display='none';if(_confirmResolve)_confirmResolve(val);_confirmResolve=null;}
-document.getElementById('confirmModal').addEventListener('click',e=>{if(e.target.id==='confirmModal')resolveConfirm(false);});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('confirmModal').style.display==='flex')resolveConfirm(false);});
-
-async function deleteReport(id, btn) {
-  const ok=await showConfirm({title:'Delete Report',desc:'This report will be permanently removed.',icon:'🗑️',iconBg:'rgba(239,68,68,0.15)',btnText:'Delete',btnColor:'#ef4444'});
-  if(!ok) return;
-  try { const res=await fetch(`/api/reports/${encodeURIComponent(id)}`,{method:'DELETE'}); const d=await res.json(); if(d.ok){btn.closest('.report-day').remove();toast('Deleted');}else toast(d.error||'Error',true); } catch { toast('Error',true); }
-}
-async function deleteAllLogs() {
-  const ok=await showConfirm({title:'Clear All Reports',desc:'All reports will be permanently deleted. This cannot be undone.',icon:'⚠️',iconBg:'rgba(239,68,68,0.15)',btnText:'Clear All',btnColor:'#ef4444'});
-  if(!ok) return;
-  try { const res=await fetch('/api/logs',{method:'DELETE'}); const d=await res.json(); if(d.ok){toast('Reports cleared');loadReports();}else toast(d.error||'Error',true); } catch { toast('Error',true); }
-}
-
-// --- Version ---
-async function loadVersion() {
-  try {
-    const res=await fetch('/api/version'); const d=await res.json();
-    document.getElementById('sidebarVersion').textContent='v'+d.version;
-    const aboutVer=document.getElementById('aboutVersion'); if(aboutVer) aboutVer.textContent='v'+d.version;
-    const container=document.getElementById('changelogContainer');
-    if(!d.history||!d.history.length){container.innerHTML='<div style="color:#555;">No version history.</div>';return;}
-    container.innerHTML=d.history.map(v=>`<div class="version-entry"><div class="version-header"><span class="version-tag">v${escHtml(v.version)}</span><span class="version-date">${escHtml(v.date)}</span></div><ul class="version-changes">${(v.changes||[]).map(c=>`<li>${escHtml(c)}</li>`).join('')}</ul></div>`).join('');
-  } catch { document.getElementById('changelogContainer').innerHTML='<div style="color:#555;">Could not load version history.</div>'; }
-}
-
-// --- Auth ---
-function loadAuthStatus() {
-  fetch('/api/auth/status').then(r=>r.json()).then(data=>{
-    const setupEl = document.getElementById('authSetup');
-    const manageEl = document.getElementById('authManage');
-    const logoutBtn = document.getElementById('logoutBtn');
-    if (data.authEnabled && data.loggedIn) {
-      setupEl.style.display = 'none';
-      manageEl.style.display = 'block';
-      document.getElementById('authCurrentUser').textContent = data.user;
-      if (logoutBtn) logoutBtn.style.display = 'block';
-    } else {
-      setupEl.style.display = 'block';
-      manageEl.style.display = 'none';
-      if (logoutBtn) logoutBtn.style.display = 'none';
-    }
-  }).catch(()=>{});
-}
-function showAuthMsg(msg, ok) {
-  const el = document.getElementById('authMsg');
-  el.textContent = msg;
-  el.style.display = 'block';
-  el.style.background = ok ? 'rgba(74,222,128,0.1)' : 'rgba(239,68,68,0.1)';
-  el.style.border = ok ? '1px solid rgba(74,222,128,0.25)' : '1px solid rgba(239,68,68,0.25)';
-  el.style.color = ok ? '#4ade80' : '#ef4444';
-  setTimeout(()=>{ el.style.display = 'none'; }, 4000);
-}
-async function authCreateUser() {
-  const u = document.getElementById('authNewUser').value.trim();
-  const p = document.getElementById('authNewPass').value;
-  if (!u || !p) return showAuthMsg('Fill in both fields', false);
-  const r = await fetch('/api/auth/setup', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u,password:p}) });
-  const d = await r.json();
-  if (!r.ok) return showAuthMsg(d.error, false);
-  showAuthMsg('Login enabled! You are now signed in as ' + d.user, true);
-  loadAuthStatus();
-}
-async function authChangePass() {
-  const cur = document.getElementById('authCurPass').value;
-  const nw = document.getElementById('authChgPass').value;
-  if (!cur || !nw) return showAuthMsg('Fill in both fields', false);
-  const r = await fetch('/api/auth/change-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({currentPassword:cur,newPassword:nw}) });
-  const d = await r.json();
-  if (!r.ok) return showAuthMsg(d.error, false);
-  showAuthMsg('Password updated', true);
-  document.getElementById('authCurPass').value = '';
-  document.getElementById('authChgPass').value = '';
-}
-async function authDisable() {
-  const p = document.getElementById('authDelPass').value;
-  if (!p) return showAuthMsg('Enter your password to confirm', false);
-  const r = await fetch('/api/auth/delete-user', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:p}) });
-  const d = await r.json();
-  if (!r.ok) return showAuthMsg(d.error, false);
-  showAuthMsg('Authentication disabled', true);
-  document.getElementById('authDelPass').value = '';
-  loadAuthStatus();
-}
-async function doLogout() {
-  await fetch('/api/auth/logout', { method:'POST' });
-  window.location.href = '/';
-}
-
-// --- Init ---
-initScheduleSelects();
-loadAuthStatus();
-loadDiskSpace(); loadStatus(); loadDirectories(); loadSchedule(); loadSmtp(); loadPresets(); loadRecipients(); loadReports(); loadBackups(); loadVersion(); loadAppSettings();
-setInterval(()=>{ loadStatus(); if(isConvertRunning) loadProgress(); }, 3000);
-</script>
+<script src="/js/utils.js"></script>
+<script src="/js/modals.js"></script>
+<script src="/js/convert.js"></script>
+<script src="/js/reports.js"></script>
+<script src="/js/settings.js"></script>
+<script src="/js/library.js"></script>
+<script src="/js/app.js"></script>
 </body>
 </html>
