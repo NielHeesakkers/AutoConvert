@@ -131,21 +131,6 @@
           <div class="progress-bar"><div class="progress-bar-fill" id="libProgressBar" style="width:0%"></div></div>
           <div class="progress-label" id="libProgressLabel">Scanning...</div>
         </div>
-        <!-- Media Browser -->
-        <div id="libMediaBrowser" style="display:none;margin-bottom:16px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-            <div class="conv-section-label" style="margin:0;">Media Library</div>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input type="text" id="libMediaSearch" placeholder="Search..." style="padding:6px 12px;font-size:13px;width:200px;" oninput="filterLibraryMedia()">
-              <select id="libMediaFilter" onchange="filterLibraryMedia()" style="padding:6px 8px;font-size:13px;">
-                <option value="all">All</option>
-                <option value="movie">Movies</option>
-                <option value="tv">Series</option>
-              </select>
-            </div>
-          </div>
-          <div id="libMediaGrid" class="lib-media-grid"></div>
-        </div>
         <!-- Summary cards -->
         <div id="libSummary" style="display:none;margin-bottom:16px;">
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
