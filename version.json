@@ -1,6 +1,19 @@
 {
-  "version": "2.1",
+  "version": "2.1.1",
   "history": [
+    {
+      "version": "2.1.1",
+      "date": "2026-03-13",
+      "changes": [
+        "Security: eliminate all command injection vulnerabilities (execSync → execFileSync)",
+        "Security: config files written with restrictive permissions (0o600)",
+        "Performance: async ffprobe calls (non-blocking library scans)",
+        "Performance: TMDB cache with size limit (2000 entries)",
+        "Reliability: error logging added to 12 previously silent catch blocks",
+        "Reliability: config JSON parse fallback on corruption",
+        "Build: extracted bundle_binary() function, fixed subshell bug, added set -eo pipefail"
+      ]
+    },
     {
       "version": "2.1",
       "date": "2026-03-13",
