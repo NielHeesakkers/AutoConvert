@@ -1,6 +1,14 @@
 {
-  "version": "1.46",
+  "version": "1.47",
   "history": [
+    {
+      "version": "1.47",
+      "date": "2026-03-13",
+      "changes": [
+        "Fix HandBrakeCLI crash: bundle all transitive dylib dependencies (libglib, libgraphite2, libpng, libintl, libXau, libXdmcp, libpcre2)",
+        "Recursive dylib resolution in build script (28 → 35 dylibs)"
+      ]
+    },
     {
       "version": "1.46",
       "date": "2026-03-13",

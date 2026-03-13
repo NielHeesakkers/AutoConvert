@@ -103,19 +103,34 @@ if [ -f "$HB_BIN" ]; then
         install_name_tool -change "$dylib" "@rpath/$DYLIB_NAME" "$APP_BUNDLE/Contents/Resources/HandBrakeCLI"
     done
 
-    # Also resolve transitive dylib dependencies (dylibs that depend on other dylibs)
-    for fw_dylib in "$FRAMEWORKS_DIR"/*.dylib; do
-        otool -L "$fw_dylib" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}' | while read -r dep; do
-            DEP_REAL=$(realpath "$dep" 2>/dev/null || echo "$dep")
-            DEP_NAME=$(basename "$dep")
-            if [ ! -f "$FRAMEWORKS_DIR/$DEP_NAME" ]; then
-                cp "$DEP_REAL" "$FRAMEWORKS_DIR/$DEP_NAME"
-                chmod 644 "$FRAMEWORKS_DIR/$DEP_NAME"
-            fi
-            install_name_tool -change "$dep" "@rpath/$DEP_NAME" "$fw_dylib"
+    # Recursively resolve transitive dylib dependencies until no new ones are found
+    PASS=0
+    while true; do
+        PASS=$((PASS + 1))
+        NEW_DEPS=0
+        for fw_dylib in "$FRAMEWORKS_DIR"/*.dylib; do
+            otool -L "$fw_dylib" | grep '/opt/homebrew.*\.dylib' | awk '{print $1}' | while read -r dep; do
+                DEP_REAL=$(realpath "$dep" 2>/dev/null || echo "$dep")
+                DEP_NAME=$(basename "$dep")
+                if [ ! -f "$FRAMEWORKS_DIR/$DEP_NAME" ]; then
+                    cp "$DEP_REAL" "$FRAMEWORKS_DIR/$DEP_NAME"
+                    chmod 644 "$FRAMEWORKS_DIR/$DEP_NAME"
+                    echo "NEW" >> /tmp/hb_new_deps.txt
+                fi
+                install_name_tool -change "$dep" "@rpath/$DEP_NAME" "$fw_dylib"
+            done
+            # Set the dylib's own id
+            install_name_tool -id "@rpath/$(basename "$fw_dylib")" "$fw_dylib"
         done
-        # Set the dylib's own id
-        install_name_tool -id "@rpath/$(basename "$fw_dylib")" "$fw_dylib"
+        if [ -f /tmp/hb_new_deps.txt ]; then
+            NEW_COUNT=$(wc -l < /tmp/hb_new_deps.txt | tr -d ' ')
+            rm -f /tmp/hb_new_deps.txt
+            [ "$NEW_COUNT" -eq 0 ] && break
+        else
+            break
+        fi
+        # Safety: max 10 passes
+        [ "$PASS" -ge 10 ] && break
     done
 
     # Add rpath to HandBrakeCLI
