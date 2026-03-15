@@ -1,6 +1,15 @@
 {
-  "version": "2.3",
+  "version": "2.4",
   "history": [
+    {
+      "version": "2.4",
+      "date": "2026-03-15",
+      "changes": [
+        "Daily report: one report per day that accumulates all encoding runs",
+        "Daily email: one email per day with all conversions from the past 24 hours",
+        "Reports merge automatically when multiple conversions run on the same day"
+      ]
+    },
     {
       "version": "2.3",
       "date": "2026-03-13",

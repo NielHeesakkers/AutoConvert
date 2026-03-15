@@ -362,7 +362,7 @@ def generate_html(report_dir):
 
 
 def save_json_report(report_dir, converted_items, failed_items, dupes, skipped):
-    """Save a JSON report file with TMDB-enriched data."""
+    """Save/merge into today's JSON report file (one report per day)."""
     reports_dir = (
         sys.argv[3] if len(sys.argv) > 3
         else os.environ.get("REPORTS_DIR", "/app/logs/reports")
@@ -435,18 +435,40 @@ def save_json_report(report_dir, converted_items, failed_items, dupes, skipped):
         name = parts[1] if len(parts) > 1 else parts[0]
         dupes_json.append({"section": section, "name": name})
 
-    report = {
-        "date": date_str,
-        "started": start_time,
-        "finished": end_time,
-        "converted": converted_json,
-        "failed": failed_json,
-        "dupes": dupes_json,
-        "skipped_empty": skipped,
-    }
-
-    filename = now.strftime("%Y-%m-%d_%H-%M-%S") + ".json"
+    # Use date-based filename: one report per day
+    filename = date_str + ".json"
     filepath = os.path.join(reports_dir, filename)
+
+    # Merge into existing report if one exists for today
+    existing = None
+    if os.path.exists(filepath):
+        try:
+            with open(filepath) as f:
+                existing = json.load(f)
+        except Exception:
+            existing = None
+
+    if existing:
+        # Append new results to existing report
+        existing["converted"] = existing.get("converted", []) + converted_json
+        existing["failed"] = existing.get("failed", []) + failed_json
+        existing["dupes"] = existing.get("dupes", []) + dupes_json
+        existing["skipped_empty"] = existing.get("skipped_empty", 0) + skipped
+        existing["finished"] = end_time
+        # Clear emailed flag so the daily email picks up new results
+        existing.pop("emailed", None)
+        report = existing
+    else:
+        report = {
+            "date": date_str,
+            "started": start_time,
+            "finished": end_time,
+            "converted": converted_json,
+            "failed": failed_json,
+            "dupes": dupes_json,
+            "skipped_empty": skipped,
+        }
+
     with open(filepath, "w") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
 

@@ -58,7 +58,7 @@ router.get('/', (req, res) => {
 
 router.delete('/:filename', (req, res) => {
   const { filename } = req.params;
-  if (!/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.json$/.test(filename)) {
+  if (!/^\d{4}-\d{2}-\d{2}(_\d{2}-\d{2}-\d{2})?\.json$/.test(filename)) {
     return res.status(400).json({ error: 'Invalid filename' });
   }
   const filepath = path.join(REPORTS_DIR, filename);
@@ -71,7 +71,7 @@ router.delete('/:filename', (req, res) => {
 router.post('/:filename/resend', async (req, res) => {
   const { filename } = req.params;
   const { email } = req.body;
-  if (!/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.json$/.test(filename)) {
+  if (!/^\d{4}-\d{2}-\d{2}(_\d{2}-\d{2}-\d{2})?\.json$/.test(filename)) {
     return res.status(400).json({ error: 'Invalid filename' });
   }
   const filepath = path.join(REPORTS_DIR, filename);
