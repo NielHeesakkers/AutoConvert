@@ -1,6 +1,14 @@
 {
-  "version": "2.6",
+  "version": "2.7",
   "history": [
+    {
+      "version": "2.7",
+      "date": "2026-03-15",
+      "changes": [
+        "Fix MKV scan: spinner animation while scanning, clear feedback when directories are not accessible",
+        "Show which directories were scanned and warnings for inaccessible NAS volumes"
+      ]
+    },
     {
       "version": "2.6",
       "date": "2026-03-15",

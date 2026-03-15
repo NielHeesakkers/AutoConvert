@@ -397,6 +397,12 @@
               </div>
             </div>
             <button class="btn btn-ghost btn-sm" onclick="scanOrphanMkvs()" id="btnScanMkvs">Scan for MKVs</button>
+            <div id="orphanMkvScanning" style="display:none;margin-top:14px;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div class="mkv-spinner"></div>
+                <span style="font-size:13px;color:#aaa;">Scanning media directories for MKV files...</span>
+              </div>
+            </div>
             <div id="orphanMkvResults" style="display:none;margin-top:14px;">
               <div id="orphanMkvList"></div>
               <div style="display:flex;gap:8px;margin-top:12px;">

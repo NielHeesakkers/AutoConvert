@@ -368,6 +368,7 @@ router.get('/version', (req, res) => {
 router.get('/orphan-mkvs', (req, res) => {
   const mediaDirs = getMediaDirs();
   const mkvFiles = [];
+  const dirStatus = [];
 
   function walkDir(dirPath) {
     try {
@@ -381,10 +382,16 @@ router.get('/orphan-mkvs', (req, res) => {
           mkvFiles.push(full);
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn(`[orphan-mkv] Cannot read ${dirPath}: ${err.message}`);
+    }
   }
 
-  for (const dir of mediaDirs) walkDir(dir);
+  for (const dir of mediaDirs) {
+    const exists = fs.existsSync(dir);
+    dirStatus.push({ path: dir, exists, name: path.basename(dir) });
+    if (exists) walkDir(dir);
+  }
 
   const results = [];
   for (const mkv of mkvFiles) {
@@ -395,7 +402,8 @@ router.get('/orphan-mkvs', (req, res) => {
     results.push({ path: mkv, filename: path.basename(mkv), size, hasMatchingMp4: hasmp4 });
   }
 
-  res.json({ mkvs: results });
+  console.log(`[orphan-mkv] Scanned ${mediaDirs.length} dirs, found ${results.length} MKV files`);
+  res.json({ mkvs: results, dirs: dirStatus });
 });
 
 // Delete specific MKV files

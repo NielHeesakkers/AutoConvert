@@ -359,21 +359,33 @@ async function clearCache() {
 // --- Orphan MKVs ---
 async function scanOrphanMkvs() {
   const btn = document.getElementById('btnScanMkvs');
+  const scanning = document.getElementById('orphanMkvScanning');
   btn.disabled = true; btn.textContent = 'Scanning...';
+  scanning.style.display = 'block';
+  document.getElementById('orphanMkvResults').style.display = 'none';
   try {
     const res = await fetch('/api/orphan-mkvs');
     const data = await res.json();
     const mkvs = data.mkvs || [];
+    const dirs = data.dirs || [];
     const container = document.getElementById('orphanMkvResults');
     const list = document.getElementById('orphanMkvList');
     const status = document.getElementById('orphanMkvStatus');
     const delBtn = document.getElementById('btnDeleteMkvs');
+    scanning.style.display = 'none';
     container.style.display = 'block';
 
     if (mkvs.length === 0) {
-      list.innerHTML = '<div style="color:#4ade80;font-size:13px;">No MKV files found in media directories.</div>';
+      const missingDirs = dirs.filter(d => !d.exists);
+      let msg = '<div style="color:#4ade80;font-size:13px;">No MKV files found in media directories.</div>';
+      if (dirs.length === 0) {
+        msg = '<div style="color:#f59e0b;font-size:13px;">No media directories configured. Add directories in the Media section above.</div>';
+      } else if (missingDirs.length > 0) {
+        msg += `<div style="color:#f59e0b;font-size:12px;margin-top:6px;">⚠ ${missingDirs.length === dirs.length ? 'All' : 'Some'} directories not accessible: ${missingDirs.map(d => d.name).join(', ')}</div>`;
+      }
+      list.innerHTML = msg;
       delBtn.style.display = 'none';
-      status.textContent = '';
+      status.textContent = `Scanned ${dirs.filter(d => d.exists).length} of ${dirs.length} directories`;
       return;
     }
 
@@ -409,7 +421,8 @@ async function scanOrphanMkvs() {
     status.textContent = `${mkvs.length} MKV files found (${fmtBytes(totalSize)})`;
     delBtn.style.display = 'inline-block';
   } catch {
-    toast('Failed to scan', true);
+    scanning.style.display = 'none';
+    toast('Failed to scan MKV files', true);
   } finally {
     btn.disabled = false; btn.textContent = 'Scan for MKVs';
   }
