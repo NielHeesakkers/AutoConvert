@@ -1,6 +1,15 @@
 {
-  "version": "2.5",
+  "version": "2.6",
   "history": [
+    {
+      "version": "2.6",
+      "date": "2026-03-15",
+      "changes": [
+        "Delete remaining MKV files: scan and remove leftover MKVs from Media settings",
+        "MKV files with matching MP4 are pre-selected, files without MP4 shown separately",
+        "Safety: only MKV files inside configured media directories can be deleted"
+      ]
+    },
     {
       "version": "2.5",
       "date": "2026-03-15",

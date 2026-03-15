@@ -364,4 +364,69 @@ router.get('/version', (req, res) => {
   catch { res.json({ version: '1.0', history: [] }); }
 });
 
+// Orphan MKV scan — find MKVs that have a matching MP4
+router.get('/orphan-mkvs', (req, res) => {
+  const mediaDirs = getMediaDirs();
+  const mkvFiles = [];
+
+  function walkDir(dirPath) {
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        const full = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          walkDir(full);
+        } else if (entry.isFile() && path.extname(entry.name).toLowerCase() === '.mkv') {
+          mkvFiles.push(full);
+        }
+      }
+    } catch {}
+  }
+
+  for (const dir of mediaDirs) walkDir(dir);
+
+  const results = [];
+  for (const mkv of mkvFiles) {
+    const mp4 = mkv.replace(/\.mkv$/i, '.mp4');
+    const hasmp4 = fs.existsSync(mp4);
+    let size = 0;
+    try { size = fs.statSync(mkv).size; } catch {}
+    results.push({ path: mkv, filename: path.basename(mkv), size, hasMatchingMp4: hasmp4 });
+  }
+
+  res.json({ mkvs: results });
+});
+
+// Delete specific MKV files
+router.post('/delete-mkvs', (req, res) => {
+  const { files } = req.body;
+  if (!Array.isArray(files) || files.length === 0) {
+    return res.status(400).json({ error: 'No files specified' });
+  }
+
+  const mediaDirs = getMediaDirs();
+  const deleted = [];
+  const errors = [];
+
+  for (const filePath of files) {
+    // Safety: only delete .mkv files inside media directories
+    const ext = path.extname(filePath).toLowerCase();
+    const insideMediaDir = mediaDirs.some(dir => filePath.startsWith(dir + path.sep) || filePath.startsWith(dir + '/'));
+    if (ext !== '.mkv' || !insideMediaDir) {
+      errors.push({ path: filePath, error: 'Not an MKV file inside a media directory' });
+      continue;
+    }
+    try {
+      fs.unlinkSync(filePath);
+      deleted.push(filePath);
+      console.log(`[settings] Deleted MKV: ${filePath}`);
+    } catch (err) {
+      errors.push({ path: filePath, error: err.message });
+    }
+  }
+
+  res.json({ ok: true, deleted: deleted.length, errors });
+});
+
 module.exports = router;

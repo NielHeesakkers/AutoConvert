@@ -356,6 +356,102 @@ async function clearCache() {
   try { const res=await fetch('/api/cache',{method:'DELETE'}); const d=await res.json(); if(d.ok){toast('Cache cleared');}else toast(d.error||'Error',true); } catch { toast('Error',true); }
 }
 
+// --- Orphan MKVs ---
+async function scanOrphanMkvs() {
+  const btn = document.getElementById('btnScanMkvs');
+  btn.disabled = true; btn.textContent = 'Scanning...';
+  try {
+    const res = await fetch('/api/orphan-mkvs');
+    const data = await res.json();
+    const mkvs = data.mkvs || [];
+    const container = document.getElementById('orphanMkvResults');
+    const list = document.getElementById('orphanMkvList');
+    const status = document.getElementById('orphanMkvStatus');
+    const delBtn = document.getElementById('btnDeleteMkvs');
+    container.style.display = 'block';
+
+    if (mkvs.length === 0) {
+      list.innerHTML = '<div style="color:#4ade80;font-size:13px;">No MKV files found in media directories.</div>';
+      delBtn.style.display = 'none';
+      status.textContent = '';
+      return;
+    }
+
+    const withMp4 = mkvs.filter(m => m.hasMatchingMp4);
+    const withoutMp4 = mkvs.filter(m => !m.hasMatchingMp4);
+
+    let html = '';
+    if (withMp4.length > 0) {
+      html += `<div style="font-size:13px;color:#ccc;margin-bottom:8px;font-weight:600;">MKV files with matching MP4 (${withMp4.length})</div>`;
+      for (const m of withMp4) {
+        html += `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:#ccc;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04);">
+          <input type="checkbox" class="orphan-mkv-cb" value="${escAttr(m.path)}" checked>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escAttr(m.path)}">${escHtml(m.filename)}</span>
+          <span style="color:#888;font-size:12px;flex-shrink:0;">${fmtBytes(m.size)}</span>
+          <span style="color:#4ade80;font-size:11px;flex-shrink:0;">MP4 exists</span>
+        </label>`;
+      }
+    }
+    if (withoutMp4.length > 0) {
+      html += `<div style="font-size:13px;color:#ccc;margin-top:14px;margin-bottom:8px;font-weight:600;">MKV files without MP4 (${withoutMp4.length})</div>`;
+      for (const m of withoutMp4) {
+        html += `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:#ccc;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04);">
+          <input type="checkbox" class="orphan-mkv-cb" value="${escAttr(m.path)}">
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escAttr(m.path)}">${escHtml(m.filename)}</span>
+          <span style="color:#888;font-size:12px;flex-shrink:0;">${fmtBytes(m.size)}</span>
+          <span style="color:#f59e0b;font-size:11px;flex-shrink:0;">No MP4</span>
+        </label>`;
+      }
+    }
+
+    list.innerHTML = html;
+    const totalSize = mkvs.reduce((s, m) => s + m.size, 0);
+    status.textContent = `${mkvs.length} MKV files found (${fmtBytes(totalSize)})`;
+    delBtn.style.display = 'inline-block';
+  } catch {
+    toast('Failed to scan', true);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Scan for MKVs';
+  }
+}
+
+async function deleteSelectedMkvs() {
+  const checkboxes = document.querySelectorAll('.orphan-mkv-cb:checked');
+  const files = Array.from(checkboxes).map(cb => cb.value);
+  if (files.length === 0) { toast('No files selected'); return; }
+
+  const ok = await showConfirm({
+    title: 'Delete MKV files',
+    desc: `This will permanently delete ${files.length} MKV file${files.length > 1 ? 's' : ''}. This cannot be undone.`,
+    icon: '🗑️',
+    iconBg: 'rgba(239,68,68,0.15)',
+    btnText: `Delete ${files.length} file${files.length > 1 ? 's' : ''}`,
+    btnColor: '#ef4444'
+  });
+  if (!ok) return;
+
+  const btn = document.getElementById('btnDeleteMkvs');
+  btn.disabled = true; btn.textContent = 'Deleting...';
+  try {
+    const res = await fetch('/api/delete-mkvs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast(`${data.deleted} file${data.deleted > 1 ? 's' : ''} deleted`);
+      scanOrphanMkvs(); // refresh list
+    } else {
+      toast(data.error || 'Error', true);
+    }
+  } catch {
+    toast('Error deleting files', true);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Delete selected';
+  }
+}
+
 // --- Watch ---
 async function loadWatchStatus() {
   try {

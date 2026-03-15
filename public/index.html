@@ -387,6 +387,24 @@
               <span id="subsTestResult" style="font-size:12px;display:none;"></span>
             </div>
           </div>
+
+          <!-- Delete MKVs -->
+          <div class="panel" style="margin-top:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <div>
+                <div class="conv-section-label" style="margin-top:0;">Delete remaining MKV files</div>
+                <p style="font-size:13px;color:#888;margin:2px 0 0;">Scan media directories for leftover MKV files and delete them. Only MKV files that already have a matching MP4 will be shown.</p>
+              </div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="scanOrphanMkvs()" id="btnScanMkvs">Scan for MKVs</button>
+            <div id="orphanMkvResults" style="display:none;margin-top:14px;">
+              <div id="orphanMkvList"></div>
+              <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn btn-danger-outline btn-sm" onclick="deleteSelectedMkvs()" id="btnDeleteMkvs" style="display:none;">Delete selected</button>
+                <span id="orphanMkvStatus" style="font-size:12px;color:#888;align-self:center;"></span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Schedule: Daily conversion + Folder Watch -->
