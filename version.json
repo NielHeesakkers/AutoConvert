@@ -1,6 +1,16 @@
 {
-  "version": "2.4",
+  "version": "2.5",
   "history": [
+    {
+      "version": "2.5",
+      "date": "2026-03-15",
+      "changes": [
+        "Clear Cache button in Settings > Logs (clears library, TMDB, and directory cache)",
+        "Click any report item to see full TMDB details (poster, overview, rating)",
+        "TMDB overview snippet shown inline on report items",
+        "Episode names shown in report badges"
+      ]
+    },
     {
       "version": "2.4",
       "date": "2026-03-15",

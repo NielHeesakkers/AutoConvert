@@ -200,6 +200,16 @@ router.delete('/logs', (req, res) => {
   }
 });
 
+router.delete('/cache', (req, res) => {
+  const libraryScan = require('../lib/library-scan');
+  const { tmdbCache } = require('../lib/tmdb');
+  const { clearDirCache } = require('../lib/directories');
+  libraryScan.clearCache();
+  tmdbCache.clear();
+  clearDirCache();
+  res.json({ ok: true });
+});
+
 // Disk Space
 function getDiskSpace(dirPath) {
   try {

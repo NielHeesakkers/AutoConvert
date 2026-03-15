@@ -57,7 +57,7 @@ function renderReportDay(report, collapsed) {
 
 function renderReportItem(item, type) {
   const div=document.createElement('div'); div.className='report-item'+(type==='failed'?' failed':'');
-  if(type==='failed'){div.style.cursor='pointer';div.title='Click for details';}
+  div.style.cursor='pointer'; div.title='Click for details';
   const tmdb=item.tmdb||{};
   const poster=tmdb.poster?`<img class="report-poster" src="${escAttr(tmdb.poster)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'report-poster-placeholder\\'>&#127910;</div>'">`:`<div class="report-poster-placeholder">&#127910;</div>`;
   const title=tmdb.title||item.basename||'Unknown';
@@ -65,14 +65,63 @@ function renderReportItem(item, type) {
   let badges='';
   if(item.section){const c=item.section==='movies'?'movies':'series';const l=item.section==='movies'?'Movie':'Series';badges+=`<span class="report-badge ${c}">${l}</span>`;}
   if(tmdb.ep_label) badges+=`<span class="report-badge episode">${escHtml(tmdb.ep_label)}</span>`;
-  if(tmdb.rating&&tmdb.rating>0) badges+=`<span class="report-badge rating">${tmdb.rating}</span>`;
+  if(tmdb.rating&&tmdb.rating>0) badges+=`<span class="report-badge rating">★ ${tmdb.rating}</span>`;
+  if(tmdb.ep_name) badges+=`<span class="report-badge" style="background:rgba(255,255,255,0.06);color:#aaa;">${escHtml(tmdb.ep_name)}</span>`;
   let sizeHtml=''; if(type!=='failed'&&(item.old_size||item.new_size)) sizeHtml=`<div class="report-item-size">${escHtml(item.old_size||'?')} &#8594; ${escHtml(item.new_size||'?')}</div>`;
   let durHtml=''; if(item.duration&&parseInt(item.duration)>0) durHtml=`<span class="report-item-duration">${item.duration} min</span>`;
+  let overviewHtml=''; if(tmdb.overview) overviewHtml=`<div class="report-item-overview">${escHtml(tmdb.overview)}</div>`;
   let fnHtml=''; if(type==='failed'&&item.basename) fnHtml=`<div class="report-item-filename">${escHtml(item.basename)}</div>`;
   let dlHtml=''; if(type==='converted'&&item.mp4_path) dlHtml=`<a href="/api/download?path=${encodeURIComponent(item.mp4_path)}" class="report-download-btn" title="Download MP4">⬇</a>`;
-  div.innerHTML=`${poster}<div class="report-item-info"><div class="report-item-title">${escHtml(title)}${year}</div>${badges?`<div class="report-item-meta">${badges}</div>`:''}${sizeHtml}${durHtml?`<div class="report-item-meta">${durHtml}</div>`:''}${fnHtml}</div>${dlHtml}`;
-  if(type==='failed') div.addEventListener('click',()=>showFailDetail(item));
+  div.innerHTML=`${poster}<div class="report-item-info"><div class="report-item-title">${escHtml(title)}${year}</div>${badges?`<div class="report-item-meta">${badges}</div>`:''}${overviewHtml}${sizeHtml}${durHtml?`<div class="report-item-meta">${durHtml}</div>`:''}${fnHtml}</div>${dlHtml}`;
+  div.addEventListener('click',(e)=>{if(e.target.closest('.report-download-btn'))return;showItemDetail(item,type);});
   return div;
+}
+
+function showItemDetail(item, type) {
+  const tmdb=item.tmdb||{};
+  const title=tmdb.title||item.basename||'Unknown';
+  const year=tmdb.year?` (${tmdb.year})`:'';
+  const rating=tmdb.rating>0?`★ ${tmdb.rating}`:'';
+  const epLabel=tmdb.ep_label||'';
+  const epName=tmdb.ep_name||'';
+  const overview=tmdb.overview||'No description available.';
+  const poster=tmdb.poster||'';
+
+  let details='';
+  if(type==='converted'){
+    details=`<div style="margin-top:12px;font-size:13px;color:#aaa;">
+      <div><strong>Size:</strong> ${escHtml(item.old_size||'?')} → ${escHtml(item.new_size||'?')}</div>
+      ${item.duration?`<div><strong>Duration:</strong> ${item.duration} min</div>`:''}
+      <div><strong>Section:</strong> ${escHtml(item.section||'')}</div>
+      <div><strong>File:</strong> ${escHtml(item.basename||'')}</div>
+    </div>`;
+  } else {
+    details=`<div style="margin-top:12px;font-size:13px;color:#aaa;">
+      <div><strong>File:</strong> ${escHtml(item.basename||'')}</div>
+      <div><strong>Size:</strong> ${escHtml(item.size||'?')}</div>
+      ${item.reason?`<div style="margin-top:8px;color:#ef4444;"><strong>Error:</strong> ${escHtml(item.reason)}</div>`:''}
+    </div>`;
+  }
+
+  const posterHtml=poster?`<img src="${escAttr(poster)}" style="width:120px;border-radius:8px;flex-shrink:0;" alt="">`:'';
+  const modal=document.getElementById('failDetailModal');
+  modal.querySelector('.modal-card').innerHTML=`
+    <div style="display:flex;gap:16px;align-items:flex-start;">
+      ${posterHtml}
+      <div style="flex:1;min-width:0;">
+        <h3 style="margin:0 0 4px;font-size:18px;color:#e0e0e0;">${escHtml(title)}${year}</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          ${epLabel?`<span class="report-badge episode">${escHtml(epLabel)}</span>`:''}
+          ${epName?`<span class="report-badge" style="background:rgba(255,255,255,0.06);color:#aaa;">${escHtml(epName)}</span>`:''}
+          ${rating?`<span class="report-badge rating">${rating}</span>`:''}
+        </div>
+        <p style="color:#999;font-size:13px;line-height:1.5;margin:0;">${escHtml(overview)}</p>
+        ${details}
+      </div>
+    </div>
+    <button class="btn btn-ghost btn-sm" style="margin-top:16px;width:100%;" onclick="this.closest('.modal').classList.remove('active')">Close</button>
+  `;
+  modal.classList.add('active');
 }
 
 async function deleteReport(id, btn) {

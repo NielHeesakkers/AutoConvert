@@ -350,6 +350,12 @@ async function clearLog() {
   try { const res=await fetch('/api/logs',{method:'DELETE'}); const d=await res.json(); if(d.ok){toast('Log cleared');loadLog();loadReports();}else toast(d.error||'Error',true); } catch { toast('Error',true); }
 }
 
+async function clearCache() {
+  const ok=await showConfirm({title:'Clear Cache',desc:'Library scan cache and TMDB metadata cache will be cleared. Next scan will rebuild from scratch.',icon:'🗑️',iconBg:'rgba(239,68,68,0.15)',btnText:'Clear',btnColor:'#ef4444'});
+  if(!ok) return;
+  try { const res=await fetch('/api/cache',{method:'DELETE'}); const d=await res.json(); if(d.ok){toast('Cache cleared');}else toast(d.error||'Error',true); } catch { toast('Error',true); }
+}
+
 // --- Watch ---
 async function loadWatchStatus() {
   try {
